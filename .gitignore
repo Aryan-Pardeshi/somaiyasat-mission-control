@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+logs/*.log*
+data/somaiyasat.db*
+exports/*
+!exports/.gitkeep
