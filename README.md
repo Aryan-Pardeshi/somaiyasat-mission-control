@@ -8,6 +8,37 @@
 
 ---
 
+## 0. Quick setup
+
+Requires **Python 3.10+** with Tkinter (bundled in standard Windows/macOS installers).
+
+```bash
+git clone https://github.com/Aryan-Pardeshi/somaiyasat-mission-control.git
+cd somaiyasat-mission-control
+python -m venv .venv
+```
+
+Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+macOS/Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+Then:
+
+```bash
+pip install -r requirements.txt
+python main.py
+```
+
+First launch auto-creates `data/`, `exports/`, `logs/`, the SQLite database and sample CSVs. No manual setup, no internet needed.
+
 ## 1. Overview
 
 SomaiyaSat Mission Control simulates a PocketQube satellite mission from a ground-control desk.
