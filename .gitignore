@@ -5,3 +5,4 @@ logs/*.log*
 data/somaiyasat.db*
 exports/*
 !exports/.gitkeep
+.venv/
