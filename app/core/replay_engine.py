@@ -65,8 +65,12 @@ class ReplayEngine:
                 t = timestamp - first_time
                 if t < 0:
                     raise ValueError("timestamp before first row")
+                # pd.to_numeric(errors="coerce") turned non-numbers into NaN earlier.
+                for key in ("battery", "temp", "signal", "power_draw", "packet_loss"):
+                    if not math.isfinite(row[key]):
+                        raise ValueError(f"{key} is missing or not a number")
                 for key in ("battery", "signal", "packet_loss"):
-                    if not math.isfinite(row[key]) or not 0 <= row[key] <= 100:
+                    if not 0 <= row[key] <= 100:
                         raise ValueError(f"{key} {row[key]} out of range")
                 if (
                     not math.isfinite(row["temp"])
