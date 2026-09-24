@@ -1,34 +1,52 @@
+"""Tests for the analytics engine (Pandas, NumPy, Matplotlib, Seaborn)."""
 from matplotlib.figure import Figure
-from app.analytics.analytics_engine import AnalyticsEngine
-from app.database.database_manager import DatabaseManager
-from app.models.telemetry import TelemetrySnapshot
-from app.models.packet import create_packet
-from app.core.router import AutonomousRouter, RouterContext
-from app.models.communication_modes import build_modes
-from app.models.enums import MissionState
-from app.utils.helpers import now_iso
 
-def test_empty_and_populated_plots_and_exports(tmp_path):
-    db = DatabaseManager(":memory:")
-    mid, _ = db.start_mission("LIVE")
+from app.analytics.analytics_engine import AnalyticsEngine
+from app.models.packet import create_packet
+
+
+def populated_mission(db, router, make_context, make_snapshot):
+    mission_id, _ = db.start_mission("LIVE")
+    for t in range(1, 6):
+        db.insert_telemetry(mission_id, make_snapshot(mission_time=t, battery=90 - t, temperature=30 + t))
+    packet = create_packet("TTC", 100, "CRITICAL", 3, created_at=0)
+    db.insert_decision(mission_id, router.evaluate([packet], make_context()).decision)
+    packet.status = packet.status.SENT
+    db.upsert_packet(mission_id, packet)
+    return mission_id
+
+
+def test_summary_and_numpy_statistics(db, router, make_context, make_snapshot, tmp_path):
+    engine = AnalyticsEngine(db, tmp_path)
+    data = engine.load(populated_mission(db, router, make_context, make_snapshot))
+    summary = engine.summary(data)
+    assert summary["packets_generated"] == 1
+    assert summary["packets_transmitted"] == 1
+    assert summary["success_rate"] == 100.0
+    assert summary["min_battery"] == 85
+    stats = engine.telemetry_stats(data)
+    assert stats["battery"]["max"] == 89 and stats["temperature"]["mean"] == 33
+
+
+def test_every_chart_draws_with_and_without_data(db, router, make_context, make_snapshot, tmp_path):
+    engine = AnalyticsEngine(db, tmp_path)
+    empty_id, _ = db.start_mission("LIVE")
+    full_id = populated_mission(db, router, make_context, make_snapshot)
+    charts = (engine.plot_timeline, engine.plot_packet_outcomes, engine.plot_mode_performance,
+              engine.plot_correlation_heatmap, engine.plot_incident_distribution)
+    for mission_id in (empty_id, full_id):
+        data = engine.load(mission_id)
+        for draw in charts:
+            figure = Figure()
+            draw(figure, data)
+            assert figure.axes                     # something was drawn
+
+
+def test_exports_write_timestamped_files(db, router, make_context, make_snapshot, tmp_path):
     engine = AnalyticsEngine(db, tmp_path / "exports")
-    plots = [engine.plot_timeline, engine.plot_packet_outcomes, engine.plot_mode_performance,
-             engine.plot_correlation_heatmap, engine.plot_incident_distribution]
-    for plot in plots:
-        plot(Figure(), engine.load(mid))
-    for t in (1, 2):
-        db.insert_telemetry(mid, TelemetrySnapshot(t, 90 - t, 4, 27 + t, 80 + t, 1, 0, 0,
-            "NOMINAL", "LINK READY", "ACTIVE PASS", True, True, now_iso()))
-    packet = create_packet("ttc", 100, "critical", 3, 0)
-    db.upsert_packet(mid, packet)
-    decision = AutonomousRouter(build_modes()).evaluate([packet], RouterContext(90, 27, 80,
-        MissionState.NOMINAL, True, 60, True, 1)).decision
-    db.insert_decision(mid, decision)
-    data = engine.load(mid)
-    assert engine.summary(data)["packets_generated"] == 1
-    assert engine.telemetry_stats(data)["battery"]["max"] == 89
-    for plot in plots:
-        plot(Figure(), data)
-    assert engine.export_table(mid, "telemetry").exists()
-    assert engine.save_summary(mid).exists()
-    db.close()
+    mission_id = populated_mission(db, router, make_context, make_snapshot)
+    for table in ("telemetry", "packets", "decisions"):
+        path = engine.export_table(mission_id, table)
+        assert path.exists() and path.name.startswith(table)
+    summary = engine.save_summary(mission_id)
+    assert "MISSION SUMMARY" in summary.read_text(encoding="utf-8")

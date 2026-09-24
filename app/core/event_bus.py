@@ -1,4 +1,12 @@
-"""Thread-safe event handoff to the Tk main thread."""
+"""Thread-safe event bus between worker threads and the Tkinter GUI.
+
+Worker threads call ``publish()``; the GUI (main thread) calls ``drain()``
+every 50 ms from ``root.after()``. ``queue.Queue`` does all the locking for
+us, so publishing from several threads at once is safe. Events carry only
+plain data (dicts, strings, numbers), never live objects, so the GUI can never
+accidentally modify simulation state from the wrong thread.
+"""
+
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
@@ -6,6 +14,7 @@ import queue
 import time
 
 logger = logging.getLogger(__name__)
+
 
 class EventType(str, Enum):
     TELEMETRY_UPDATE = "TELEMETRY_UPDATE"
@@ -25,18 +34,23 @@ class EventType(str, Enum):
     REPLAY_PROGRESS = "REPLAY_PROGRESS"
     LOG = "LOG"
 
+
 @dataclass
 class Event:
     """One immutable-by-convention plain-data notification."""
+
     type: EventType
     data: dict
     created: float = field(default_factory=time.time)
 
+
 class EventBus:
     """Bounded queue keeps worker threads separate from Tk widgets."""
+
     def __init__(self, maxsize: int = 10000):
         self._queue: queue.Queue[Event] = queue.Queue(maxsize)
         self._warned = False
+
     def publish(self, event_type: EventType, **data) -> None:
         """Enqueue an event without ever blocking a worker."""
         try:
@@ -45,6 +59,7 @@ class EventBus:
             if not self._warned:
                 logger.warning("Event bus full; dropping events")
                 self._warned = True
+
     def drain(self, max_events: int) -> list[Event]:
         """Pull at most max_events for a UI poll cycle."""
         events = []
@@ -56,6 +71,7 @@ class EventBus:
         if self._queue.qsize() < self._queue.maxsize:
             self._warned = False
         return events
+
     def clear(self) -> None:
         """Discard pending events before a fresh mission."""
         while True:

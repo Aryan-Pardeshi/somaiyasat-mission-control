@@ -1,4 +1,5 @@
 """Build and load a small deterministic SSTV test card for mission replay."""
+
 from __future__ import annotations
 
 import logging
@@ -37,13 +38,12 @@ def _smooth_noise(
 ) -> np.ndarray:
     """Return broad, smoothly interpolated noise for geography and weather."""
     coarse = rng.integers(
-        0, 256,
+        0,
+        256,
         size=(max(3, height // cell_size), max(3, width // cell_size)),
         dtype=np.uint8,
     )
-    field = Image.fromarray(coarse, mode="L").resize(
-        (width, height), Image.Resampling.BICUBIC
-    )
+    field = Image.fromarray(coarse, mode="L").resize((width, height), Image.Resampling.BICUBIC)
     if blur:
         field = field.filter(ImageFilter.GaussianBlur(blur))
     return np.asarray(field, dtype=np.float32) / 255.0
@@ -73,7 +73,7 @@ def build_sstv_test_image(width: int = 320, height: int = 256) -> Image.Image:
     earth_mask = radius <= 1.0
     center_light = np.sqrt(np.maximum(0.0, 1.0 - np.minimum(radius * radius, 1.0)))
     sun = 0.80 + 0.20 * (1.0 - x / max(width - 1, 1))
-    light = np.clip((0.28 + 0.72 * center_light ** 0.75) * sun, 0.0, 1.0)
+    light = np.clip((0.28 + 0.72 * center_light**0.75) * sun, 0.0, 1.0)
     ocean_variation = (_smooth_noise(rng, width, height, 46, 6.0) - 0.5) * 5.0
 
     ocean = np.empty((height, width, 4), dtype=np.uint8)
@@ -111,9 +111,15 @@ def build_sstv_test_image(width: int = 320, height: int = 256) -> Image.Image:
     land_color = np.empty((height, width, 4), dtype=np.uint8)
     tan_mix = np.clip((land_variation - 0.39) * 1.40, 0.0, 0.62)
     land_shade = (0.72 + 0.28 * sun) * (0.84 + 0.16 * center_light)
-    land_color[:, :, 0] = np.clip((75 + 60 * tan_mix + 27 * (land_variation - 0.5)) * land_shade, 0, 255).astype(np.uint8)
-    land_color[:, :, 1] = np.clip((97 + 29 * tan_mix + 29 * (land_variation - 0.5)) * land_shade, 0, 255).astype(np.uint8)
-    land_color[:, :, 2] = np.clip((61 + 17 * tan_mix + 18 * (land_variation - 0.5)) * land_shade, 0, 255).astype(np.uint8)
+    land_color[:, :, 0] = np.clip(
+        (75 + 60 * tan_mix + 27 * (land_variation - 0.5)) * land_shade, 0, 255
+    ).astype(np.uint8)
+    land_color[:, :, 1] = np.clip(
+        (97 + 29 * tan_mix + 29 * (land_variation - 0.5)) * land_shade, 0, 255
+    ).astype(np.uint8)
+    land_color[:, :, 2] = np.clip(
+        (61 + 17 * tan_mix + 18 * (land_variation - 0.5)) * land_shade, 0, 255
+    ).astype(np.uint8)
     soft_land = Image.fromarray((land_mask * 255).astype(np.uint8), mode="L").filter(
         ImageFilter.GaussianBlur(1.25)
     )
@@ -150,7 +156,7 @@ def build_sstv_test_image(width: int = 320, height: int = 256) -> Image.Image:
 
     rim = np.zeros((height, width, 4), dtype=np.uint8)
     rim[:, :, :3] = (116, 225, 255)
-    rim[:, :, 3] = (180.0 * np.exp(-((radius - 1.0) / 0.009) ** 2)).astype(np.uint8)
+    rim[:, :, 3] = (180.0 * np.exp(-(((radius - 1.0) / 0.009) ** 2))).astype(np.uint8)
     rim_layer = Image.fromarray(rim, mode="RGBA").filter(ImageFilter.GaussianBlur(0.8))
     image = Image.alpha_composite(image, rim_layer)
 
@@ -174,8 +180,7 @@ def build_sstv_test_image(width: int = 320, height: int = 256) -> Image.Image:
             star_draw.point((sx, sy), fill=(*tint, 255))
         else:
             star_draw.ellipse(
-                (sx - diameter // 2, sy - diameter // 2,
-                 sx + diameter // 2, sy + diameter // 2),
+                (sx - diameter // 2, sy - diameter // 2, sx + diameter // 2, sy + diameter // 2),
                 fill=(*tint, 255),
             )
     image = Image.alpha_composite(image, star_layer)
@@ -183,8 +188,14 @@ def build_sstv_test_image(width: int = 320, height: int = 256) -> Image.Image:
     # An eight-bar strip reads clearly at native size and identifies this as a
     # decoded test frame rather than a photograph.
     color_bars = (
-        (242, 242, 242), (242, 220, 35), (34, 210, 230), (40, 185, 75),
-        (222, 55, 210), (230, 52, 46), (50, 83, 218), (12, 15, 25),
+        (242, 242, 242),
+        (242, 220, 35),
+        (34, 210, 230),
+        (40, 185, 75),
+        (222, 55, 210),
+        (230, 52, 46),
+        (50, 83, 218),
+        (12, 15, 25),
     )
     bar_draw = ImageDraw.Draw(image)
     for index, color in enumerate(color_bars):
@@ -201,13 +212,16 @@ def build_sstv_test_image(width: int = 320, height: int = 256) -> Image.Image:
     caption_draw.line((0, band_top, width, band_top), fill=(57, 196, 224, 230), width=1)
     caption_font = _font(11)
     caption_draw.text(
-        (8, band_top + 4), "SOMAIYASAT \u00b7 SSTV \u00b7 ROBOT36",
-        font=caption_font, fill=(227, 243, 250, 255),
+        (8, band_top + 4),
+        "SOMAIYASAT \u00b7 SSTV \u00b7 ROBOT36",
+        font=caption_font,
+        fill=(227, 243, 250, 255),
     )
     baseline = band_top + caption_height - 4
     right_edge = width - 8
-    caption_draw.text((right_edge, baseline), "KJSCE   GS", font=caption_font,
-                      fill=(111, 211, 237, 255), anchor="rs")
+    caption_draw.text(
+        (right_edge, baseline), "KJSCE   GS", font=caption_font, fill=(111, 211, 237, 255), anchor="rs"
+    )
     image = Image.alpha_composite(image, caption)
 
     return image.convert("RGB")

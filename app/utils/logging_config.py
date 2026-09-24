@@ -1,7 +1,9 @@
 """Application logging setup."""
+
 import logging
 from logging.handlers import RotatingFileHandler
 from app import config
+
 
 def setup_logging() -> None:
     """Write normal activity to a rotating file and warnings to console."""

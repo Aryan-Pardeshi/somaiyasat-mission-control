@@ -3,6 +3,7 @@
 The examples are generated from the central config so packet sizes, weights,
 power costs, and replay limits stay aligned with the rest of Mission Control.
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,15 +23,21 @@ import pandas as pd
 from app import config
 
 _COLUMNS = [
-    "timestamp", "battery", "temp", "signal", "power_draw", "packet_loss",
-    "packet_type", "priority", "size_kb", "event",
+    "timestamp",
+    "battery",
+    "temp",
+    "signal",
+    "power_draw",
+    "packet_loss",
+    "packet_type",
+    "priority",
+    "size_kb",
+    "event",
 ]
 _PACKET_TYPES = tuple(config.PACKET_TYPE_WEIGHTS)
 _PRIORITIES = tuple(config.PRIORITIES)
 _TRANSMIT_MODES = ("TTC", "CODEC2", "M17", "SSTV")
-_TRANSMIT_WEIGHTS = np.array(
-    [config.PACKET_TYPE_WEIGHTS[name] for name in _TRANSMIT_MODES], dtype=float
-)
+_TRANSMIT_WEIGHTS = np.array([config.PACKET_TYPE_WEIGHTS[name] for name in _TRANSMIT_MODES], dtype=float)
 _TRANSMIT_WEIGHTS /= _TRANSMIT_WEIGHTS.sum()
 
 
@@ -140,7 +147,8 @@ def _power_and_thermal(
     else:
         progress = (seconds - 1) / max(row_count - 1, 1)
         temp = (
-            27.0 + 10.0 * progress
+            27.0
+            + 10.0 * progress
             + 1.1 * np.sin(2.0 * np.pi * seconds / 175.0)
             + (power - config.BASE_POWER_DRAW) * 0.45
             + rng.normal(0.0, 0.25, row_count)
@@ -177,9 +185,7 @@ def _mission_frame(
     battery = np.clip(battery, 0.0, 100.0)
 
     congestion = (seconds >= 190) & (seconds <= 215) if stressful else None
-    packet_types, priorities, sizes = _packets(
-        row_count, rng, 0.34 if not stressful else 0.33, congestion
-    )
+    packet_types, priorities, sizes = _packets(row_count, rng, 0.34 if not stressful else 0.33, congestion)
     power_draw, temp = _power_and_thermal(in_pass, rng, row_count, stressful=stressful)
 
     # During the stressful mission's weak-link interval the signal stays below
@@ -190,9 +196,9 @@ def _mission_frame(
 
     packet_loss = np.zeros(row_count, dtype=float)
     packet_loss[in_pass] = np.clip(
-        1.0 + 25.0 * (1.0 - signal[in_pass] / 100.0) ** 2
-        + rng.normal(0.0, 1.25, int(in_pass.sum())),
-        0.0, 100.0,
+        1.0 + 25.0 * (1.0 - signal[in_pass] / 100.0) ** 2 + rng.normal(0.0, 1.25, int(in_pass.sum())),
+        0.0,
+        100.0,
     )
     events = [""] * row_count
     if stressful:
