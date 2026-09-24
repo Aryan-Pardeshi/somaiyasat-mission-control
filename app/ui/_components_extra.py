@@ -218,15 +218,16 @@ class SegmentedControl(tk.Frame):
 class KeyValueList(tk.Frame):
     """Two-column facts. Unknown keys are appended by ``set``."""
 
-    def __init__(self,parent,rows=None,bg=COLORS["card"],**kw):
+    def __init__(self,parent,rows=None,bg=COLORS["card"],row_pady=None,**kw):
         super().__init__(parent,bg=bg,**kw)
         self._labels={}
+        self.row_pady = px(5) if row_pady is None else row_pady
         for key,value in rows or []:self.set(key,value)
 
     def set(self,key,value,color=None):
         if key not in self._labels:
             row=tk.Frame(self,bg=self.cget("bg"))
-            row.pack(fill="x",pady=px(5))
+            row.pack(fill="x",pady=self.row_pady)
             tk.Label(row,text=str(key),bg=row.cget("bg"),fg=COLORS["text_2"],
                      font=FONTS["small"]).pack(side="left")
             label=tk.Label(row,bg=row.cget("bg"),fg=COLORS["text"],font=FONTS["body_bold"])
@@ -238,9 +239,10 @@ class KeyValueList(tk.Frame):
 class ScoreBar(tk.Frame):
     """Weighted-score breakdown. Rows: (label, points, max_points, colour)."""
 
-    def __init__(self,parent,rows=None,bg=COLORS["card"],**kw):
+    def __init__(self,parent,rows=None,bg=COLORS["card"],compact=False,**kw):
         super().__init__(parent,bg=bg,**kw)
         self._jobs=[]
+        self.compact=compact
         self.set(rows or [])
 
     def set(self,rows):
@@ -249,15 +251,15 @@ class ScoreBar(tk.Frame):
         for child in self.winfo_children():child.destroy()
         for label,points,maximum,color in rows:
             row=tk.Frame(self,bg=self.cget("bg"))
-            row.pack(fill="x",pady=px(5))
+            row.pack(fill="x",pady=0 if self.compact else px(5))
             top=tk.Frame(row,bg=row.cget("bg"))
             top.pack(fill="x")
             tk.Label(top,text=label,bg=top.cget("bg"),fg=COLORS["text_2"],
-                     font=FONTS["small"]).pack(side="left")
+                     font=FONTS["caption"] if self.compact else FONTS["small"]).pack(side="left")
             tk.Label(top,text=f"+{points:.1f}",bg=top.cget("bg"),fg=COLORS["text"],
-                     font=FONTS["body_bold"]).pack(side="right")
-            bar=LevelBar(row,bg=row.cget("bg"),color=color)
-            bar.pack(fill="x",pady=(px(5),0))
+                     font=FONTS["caption"] if self.compact else FONTS["body_bold"]).pack(side="right")
+            bar=LevelBar(row,bg=row.cget("bg"),color=color,height=px(3) if self.compact else None)
+            bar.pack(fill="x",pady=(0 if self.compact else px(5),0))
             target=max(0.,min(1.,points/max(1e-9,maximum)))
             def animate(b=bar,t=target,step=0):
                 b.set(t*(1-(1-min(1,step/13))**3))
