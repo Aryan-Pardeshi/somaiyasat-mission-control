@@ -145,7 +145,10 @@ class AutonomousRouter:
         hold = self.rules.global_hold(ctx)
         active = self.rules.describe_active_rules(ctx)
         for packet in intact:
-            packet.score = self.score_packet(packet, ctx).total
+            breakdown = self.score_packet(packet, ctx)
+            packet.score = breakdown.total
+            packet.breakdown = breakdown.to_dict()
+            packet.energy_cost = self.modes[packet.preferred_mode].calculate_energy_cost(packet, ctx.signal)
             if hold:
                 packet.hold_reason = hold
                 continue

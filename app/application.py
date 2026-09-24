@@ -151,8 +151,9 @@ class MissionControlApp(tk.Tk):
         self.host.grid(row=1, column=0, sticky="nsew")
         self.host.grid_rowconfigure(0, weight=1)
         self.host.grid_columnconfigure(0, weight=1)
+        # The toast container is only placed while it holds toasts: an empty Tk
+        # frame keeps its last size and would otherwise cover the page corner.
         self.toast_host = tk.Frame(main, bg=COLORS["bg"])
-        self.toast_host.place(relx=1, y=px(69), anchor="ne")
         self._shell_ready = True
 
     def _build_pages(self, *keys: str) -> None:
@@ -179,7 +180,8 @@ class MissionControlApp(tk.Tk):
 
     def show_page(self, key: str) -> None:
         """Switch a single built page using its shared lifecycle hooks."""
-        if key not in self.pages or not self._shell_ready or not self.shell.winfo_ismapped():
+        # The shell is gridded (not necessarily mapped yet) once the user enters.
+        if key not in self.pages or not self._shell_ready or not self.shell.winfo_manager():
             return
         if self.current_page == key:
             return
@@ -207,12 +209,17 @@ class MissionControlApp(tk.Tk):
         self._toasts.append(toast)
         if len(self._toasts) > 3:
             self._toasts.pop(0).destroy()
+        self.toast_host.place(relx=1, x=-px(16), y=px(72), anchor="ne")
+        self.toast_host.lift()
+
         def dismiss() -> None:
             if toast in self._toasts:
                 self._toasts.remove(toast)
                 toast.destroy()
-        toast.after(3500, dismiss)
-        self.toast_host.lift()
+            if not self._toasts:
+                self.toast_host.place_forget()
+
+        self.after(3500, dismiss)
 
     def confirm(self, title: str, message: str) -> bool:
         """Ask before ending an active mission on window close."""

@@ -103,7 +103,7 @@ THERMAL_SUN_OFFSET = 4.0          # sunlit side warms the satellite
 THERMAL_ECLIPSE_OFFSET = -3.0     # eclipse cools it
 THERMAL_RESPONSE = 0.08           # fraction of the gap closed per second
 THERMAL_NOISE_STD = 0.15
-EXTERNAL_HEAT_DECAY = 0.975       # injected heat decays by this factor per second
+EXTERNAL_HEAT_DECAY = 0.985       # injected heat decays by this factor per second
 
 # ---------------------------------------------------------------------------
 # Safety thresholds (Layer 1 of the autonomous decision engine)
@@ -197,7 +197,7 @@ PACKET_PRIORITY_WEIGHTS = {
 # ---------------------------------------------------------------------------
 BATTERY_DRAIN_TARGET = 19.0          # battery drain incident ends around this level
 BATTERY_DRAIN_STEPS = 4              # applied over this many telemetry ticks
-THERMAL_SPIKE_STEPS = (10.0, 11.0, 11.0, 6.0)   # °C of heat injected per tick
+THERMAL_SPIKE_STEPS = (10.0, 11.0, 10.0, 3.0)   # °C of heat injected per tick
 SIGNAL_LOSS_DURATION = 20.0          # seconds of heavy attenuation
 SIGNAL_LOSS_ATTENUATION = 0.08       # signal multiplied by this during loss
 COMM_FAILURE_DURATION = 8.0          # seconds the RF link is down

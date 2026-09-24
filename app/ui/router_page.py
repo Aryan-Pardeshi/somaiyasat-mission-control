@@ -29,11 +29,11 @@ class RouterPage(BasePage):
         self.rules = tk.Label(left.body, text="Active safety rules: standard limits", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["small"], anchor="w", wraplength=px(500), justify="left")
         self.rules.pack(fill="x", pady=(0, px(8)))
         self.queue_table = DataTable(left.body, [
-            ("id", "PACKET", 45, "w"), ("type", "TYPE", 65, "w"),
-            ("priority", "PRI", 60, "w"), ("size", "KB", 45, "e"),
-            ("age", "AGE", 45, "e"), ("required", "REQ %", 45, "e"),
-            ("energy", "J", 50, "e"), ("score", "SCORE", 45, "e"),
-            ("status", "STATUS", 65, "w"),
+            ("id", "ID", 52, "w"), ("type", "TYPE", 92, "w"),
+            ("priority", "PRIORITY", 78, "w"), ("size", "KB", 56, "e"),
+            ("age", "AGE s", 50, "e"), ("required", "MIN SIG %", 72, "e"),
+            ("energy", "ENERGY J", 72, "e"), ("score", "SCORE", 56, "e"),
+            ("status", "STATUS", 104, "w"),
         ])
         self.queue_table.pack(fill="both", expand=True)
         self.queue_table.on_select(self._select_row)

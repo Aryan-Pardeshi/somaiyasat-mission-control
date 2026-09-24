@@ -6,7 +6,10 @@ import random
 import tkinter as tk
 from typing import Callable
 
+from PIL import ImageTk
+
 from app import config
+from .graphics import SatelliteSprite, render_earth
 from .theme import COLORS, FONTS, blend, px
 
 
@@ -24,7 +27,12 @@ class OrbitView(tk.Canvas):
         self._items={}
         self._trail=[]
         self._pulse_phase=0.
-        self.bind("<Configure>",self._build)
+        self._earth_photo=None      # keep a reference or Tk would garbage-collect the image
+        self._earth_size=None
+        self._resize_job=None
+        self.sprite=None
+        # Rebuilding renders the Earth image, so resize events are debounced.
+        self.bind("<Configure>",self._schedule_build)
 
     def update_state(self,pass_info:dict|None,snapshot:dict|None,
                      transmitting_mode:str|None):
@@ -48,6 +56,11 @@ class OrbitView(tk.Canvas):
         self.stop()
         super().destroy()
 
+    def _schedule_build(self,_=None):
+        if self._resize_job is not None:
+            self.after_cancel(self._resize_job)
+        self._resize_job=self.after(120,self._build)
+
     def _point(self,angle,radius):
         a=math.radians(angle)
         return self.cx+radius*math.cos(a),self.cy-radius*math.sin(a)
@@ -68,31 +81,15 @@ class OrbitView(tk.Canvas):
             d=px(.8 if rng.random()<.75 else 1.25)
             self.create_oval(x-d,y-d,x+d,y+d,fill=blend(COLORS["text"],self.cget("bg"),
                              rng.uniform(.17,.48)),outline="")
+        self._resize_job=None
         r=self.earth_r
-        for i in range(6,0,-1):
-            rr=r*(1+i*.10)
-            self.create_oval(self.cx-rr,self.cy-rr,self.cx+rr,self.cy+rr,
-                fill=blend(COLORS["blue"],self.cget("bg"),.018+(7-i)*.006),outline="")
-        self.create_oval(self.cx-r,self.cy-r,self.cx+r,self.cy+r,
-                         fill="#123C63",outline=blend(COLORS["cyan"],"#123C63",.35),width=max(1,px(1)))
-        self.create_arc(self.cx-r,self.cy-r,self.cx+r,self.cy+r,start=90,extent=180,
-                        style="pieslice",fill="#0C263F",outline="")
-        # Simplified continental silhouettes remain inside the Earth disc.
-        for pts in (
-            [(-.48,-.30),(-.26,-.54),(.05,-.47),(.14,-.24),(-.02,-.08),(-.11,.12),(-.37,.20),(-.50,-.05)],
-            [(.18,-.11),(.41,-.19),(.59,.02),(.52,.31),(.29,.47),(.15,.25)],
-            [(-.18,.38),(.03,.34),(.15,.58),(-.06,.68),(-.25,.54)],
-        ):
-            coords=[v for a,b in pts for v in (self.cx+a*r,self.cy+b*r)]
-            self.create_polygon(*coords,fill="#22556B",outline="",smooth=True)
-        grid=blend(COLORS["cyan"],"#123C63",.12)
-        for factor in (.30,.64):
-            self.create_oval(self.cx-r*factor,self.cy-r,self.cx+r*factor,self.cy+r,
-                             outline=grid,width=max(1,px(1)))
-        for factor in (-.48,0,.48):
-            y=self.cy+r*factor
-            width=r*math.sqrt(1-factor*factor)
-            self.create_line(self.cx-width,y,self.cx+width,y,fill=grid,width=max(1,px(1)))
+        # The Earth is a pre-rendered shaded sphere (see graphics.render_earth);
+        # it is only re-rendered when the widget size changes.
+        size=int(2*r)
+        if self._earth_size!=size:
+            self._earth_photo=ImageTk.PhotoImage(render_earth(size,glow=.16))
+            self._earth_size=size
+        self.create_image(self.cx,self.cy,image=self._earth_photo)
         self.create_oval(self.cx-self.orbit_r,self.cy-self.orbit_r,
                          self.cx+self.orbit_r,self.cy+self.orbit_r,
                          outline=COLORS["border_hi"],dash=(px(3),px(7)),width=max(1,px(1)))
@@ -107,8 +104,8 @@ class OrbitView(tk.Canvas):
                          fill=blend(COLORS["cyan"],self.cget("bg"),.22),outline="")
         self.create_oval(self.gx-px(2.5),self.gy-px(2.5),self.gx+px(2.5),self.gy+px(2.5),
                          fill=COLORS["cyan"],outline="")
-        self.create_text(self.gx+px(10),self.gy-px(7),text="KJSCE GS",fill=COLORS["text_2"],
-                         font=FONTS["caption"],anchor="sw")
+        self.create_text(self.gx-px(10),self.gy-px(8),text="KJSCE GS",fill=COLORS["text_2"],
+                         font=FONTS["caption"],anchor="se")
         # Animated IDs are created once per size change; frames only update coords.
         self._items["beam_glow"]=self.create_line(0,0,0,0,fill=COLORS["cyan"],width=px(7),state="hidden")
         self._items["beam"]=self.create_line(0,0,0,0,fill=COLORS["cyan"],width=px(1.5),
@@ -123,10 +120,9 @@ class OrbitView(tk.Canvas):
         for i in range(9):
             color=blend(COLORS["cyan"],self.cget("bg"),.08+.50*(i/8))
             self._items["trail"].append(self.create_oval(0,0,0,0,fill=color,outline=""))
-        for name in ("left_panel","body","right_panel"):
-            self._items[name]=self.create_polygon(0,0,0,0,fill=COLORS["blue"] if name!="body" else COLORS["text"],outline="")
+        self.sprite=SatelliteSprite(self,scale=max(.8,px(1)*.95))
         self._items["sat_label"]=self.create_text(0,0,text="SOMAIYASAT",fill=COLORS["text"],
-                                                   font=FONTS["caption"],anchor="sw")
+                                                   font=FONTS["caption"],anchor="w")
         self._items["title"]=self.create_text(px(22),px(20),anchor="nw",text="ORBIT VIEW",
                                                fill=COLORS["muted"],font=FONTS["caption"])
         for name,y,anchor in (("phase",px(42),"nw"),("downlink",h-px(20),"sw"),("pass",h-px(20),"se")):
@@ -148,29 +144,31 @@ class OrbitView(tk.Canvas):
         sun="SUNLIT" if info.get("sunlit",True) else "ECLIPSE"
         self.itemconfigure(self._items["pass"],text=f"PASS #{info.get('pass_number',1)} · {sun}")
 
-    def _poly(self,center_x,center_y,normal,tangent,along,across):
-        out=[]
-        for u,v in ((-along,-across),(along,-across),(along,across),(-along,across)):
-            out.extend((center_x+u*tangent[0]+v*normal[0],
-                        center_y+u*tangent[1]+v*normal[1]))
-        return out
-
     def _draw_frame(self,angle):
         if not self._items:return
         x,y=self._point(angle,self.orbit_r)
         radians=math.radians(angle)
-        tangent=(-math.sin(radians),-math.cos(radians))
-        normal=(math.cos(radians),-math.sin(radians))
-        gap=px(10)
-        for name,offset in (("left_panel",-px(15)),("right_panel",px(15))):
-            cx=x+offset*tangent[0];cy=y+offset*tangent[1]
-            self.coords(self._items[name],*self._poly(cx,cy,normal,tangent,px(6),px(5)))
-        self.coords(self._items["body"],*self._poly(x,y,normal,tangent,px(5),px(6)))
-        self.coords(self._items["sat_label"],x+px(13),y-px(12))
+        # Travel direction on screen; the sprite is flipped so its antenna faces Earth.
+        heading=math.degrees(math.atan2(math.cos(radians),math.sin(radians)))
+        self.sprite.place(x,y,heading)
+        # Keep the name label on the outside of the orbit so it is never clipped.
+        lx,ly=self._point(angle,self.orbit_r+px(26))
+        label=self._items["sat_label"]
+        self.coords(label,lx,ly)
+        self.itemconfigure(label,anchor="w" if lx>self.cx+px(10) else "e" if lx<self.cx-px(10) else "center")
+        box=self.bbox(label)
+        if box:
+            # Nudge the label back inside the canvas when it would be cut off.
+            margin=px(8)
+            dx=max(0,margin-box[0])-max(0,box[2]-(self.winfo_width()-margin))
+            dy=max(0,margin-box[1])-max(0,box[3]-(self.winfo_height()-margin))
+            if dx or dy:
+                self.move(label,dx,dy)
         self._trail.append(angle)
-        self._trail=self._trail[-9:]
+        # Keep ~1.2 s of history and draw every 4th position as a fading trail.
+        self._trail=self._trail[-36:]
         for index,item in enumerate(self._items["trail"]):
-            past=self._trail[max(0,len(self._trail)-9+index)]
+            past=self._trail[max(0,len(self._trail)-36+index*4)]
             tx,ty=self._point(past,self.orbit_r)
             rr=px(1.1+index*.11)
             self.coords(item,tx-rr,ty-rr,tx+rr,ty+rr)

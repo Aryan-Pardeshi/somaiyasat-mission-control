@@ -27,6 +27,9 @@ class DataPacket:
         self.corrupted = False
         self.metadata = dict(metadata or {})
         self.score = 0.0
+        # Filled in by the router every cycle so the UI can show live estimates.
+        self.energy_cost: float | None = None
+        self.breakdown: dict[str, float] = {}
         self.hold_reason = ""
         self.selected_at: float | None = None
         self.transmitted_at: float | None = None
@@ -77,7 +80,7 @@ class DataPacket:
                     retry_count=self.retry_count, corrupted=bool(self.corrupted), score=self.score,
                     hold_reason=self.hold_reason, age=self.age(now) if now is not None else 0.0,
                     required_signal=config.MODE_MIN_SIGNAL[self.preferred_mode.value], mode=self.mode_used or self.preferred_mode.value,
-                    created_at=self.created_iso)
+                    created_at=self.created_iso, energy_cost=self.energy_cost, breakdown=dict(self.breakdown))
 
 class TTCPacket(DataPacket):
     """Command and control packet."""

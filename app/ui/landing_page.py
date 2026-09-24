@@ -8,7 +8,10 @@ import random
 import tkinter as tk
 from typing import Callable
 
+from PIL import Image, ImageTk
+
 from app import config
+from .graphics import SatelliteSprite, render_earth
 from .icons import draw_logo
 from .theme import COLORS, FONTS, blend, px
 from .components import rounded_rect
@@ -52,8 +55,10 @@ class LandingPage(tk.Frame):
         self._ready=False
         self._button_hot=False
         self._button_box=(0,0,0,0)
-        self._sat=None
-        self._sat_blink=None
+        self._sat_sprite=None
+        self._earth_photo=None   # reference kept so Tk does not drop the image
+        self._earth_size=None
+        self._orbit=(0,0,1,1)
         self._frames=0
 
     def _after(self,ms,callback):
@@ -134,23 +139,21 @@ class LandingPage(tk.Frame):
                     self._stars.append((item,x,y,r,layer,rng.random()*math.tau))
             ex,ey=w*.82,h*1.17
             er=min(w,h)*.47
-            for i in range(7,0,-1):
-                radius=er*(1+i*.055)
-                c.create_oval(ex-radius,ey-radius,ex+radius,ey+radius,
-                              fill=blend(COLORS["blue"],COLORS["bg"],.012+(7-i)*.006),outline="")
-            c.create_oval(ex-er,ey-er,ex+er,ey+er,fill="#123552",outline="")
-            c.create_arc(ex-er,ey-er,ex+er,ey+er,start=90,extent=180,
-                         style="pieslice",fill="#0B223B",outline="")
-            for _ in range(75):
-                dx=rng.uniform(-.82,.12)*er;dy=rng.uniform(-.75,-.08)*er
-                if dx*dx+dy*dy<er*.9*er*.9:
-                    rr=px(rng.choice((.6,.8,1.0)))
-                    c.create_oval(ex+dx-rr,ey+dy-rr,ex+dx+rr,ey+dy+rr,
-                                  fill=blend(COLORS["amber"],"#0B223B",.15),outline="")
-            c.create_arc(w*.10,h*.13,w*1.18,h*1.27,start=16,extent=165,
-                         style="arc",outline=blend(COLORS["cyan"],COLORS["bg"],.18),width=max(1,px(1)))
-            self._sat=c.create_polygon(0,0,0,0,fill=COLORS["text"],outline="")
-            self._sat_blink=c.create_oval(0,0,0,0,fill=COLORS["cyan"],outline="")
+            # Shaded Earth rendered once per size with NumPy/Pillow (graphics.py).
+            # Rendered at reduced resolution and upscaled: it is soft anyway and
+            # this keeps the landing animation from stuttering on resize.
+            size=int(2*er)
+            if self._earth_size!=size:
+                small=render_earth(max(64,int(size/1.6)),glow=.07,rotation=2.2)
+                full=int(small.width*1.6)
+                self._earth_photo=ImageTk.PhotoImage(small.resize((full,full),Image.BICUBIC))
+                self._earth_size=size
+            c.create_image(ex,ey,image=self._earth_photo)
+            # The satellite flies along exactly this ellipse (see _fallback_frame).
+            self._orbit=(w*.64,h*.70,w*.54,h*.57)
+            ox,oy,rx,ry=self._orbit
+            c.create_oval(ox-rx,oy-ry,ox+rx,oy+ry,outline=blend(COLORS["cyan"],COLORS["bg"],.20),width=max(1,px(1)))
+            self._sat_sprite=SatelliteSprite(c,scale=max(1.,px(1.25)))
         # Text is drawn after the scene so a darkened video stays behind it.
         logo_y=h*.19
         draw_logo(c,w*.5,logo_y,min(px(110),h*.145))
@@ -253,14 +256,14 @@ class LandingPage(tk.Frame):
             if self._frames%5==0:
                 alpha=.22+layer*.13+.08*math.sin(self._frames*.07+phase)
                 c.itemconfigure(item,fill=blend(COLORS["text"],COLORS["bg"],alpha))
-        if self._sat is not None:
+        if self._sat_sprite is not None:
+            ox,oy,rx,ry=self._orbit
             t=self._frames*.006
-            x=w*.64+math.cos(t)*w*.36
-            y=h*.70-math.sin(t)*h*.40
-            s=px(5)
-            c.coords(self._sat,x-s*2,y-s,x+s*2,y-s,x+s*2,y+s,x-s*2,y+s)
-            c.coords(self._sat_blink,x-s*.5,y-s*.5,x+s*.5,y+s*.5)
-            c.itemconfigure(self._sat_blink,fill=COLORS["cyan"] if self._frames%24<12 else COLORS["blue"])
+            x=ox+math.cos(t)*rx
+            y=oy-math.sin(t)*ry
+            # Heading = direction of motion along the ellipse (derivative of x, y).
+            heading=math.degrees(math.atan2(-math.cos(t)*ry,-math.sin(t)*rx))
+            self._sat_sprite.place(x,y,heading+180,blink=self._frames%24<12)
 
     def _video_frame(self):
         try:
@@ -277,7 +280,6 @@ class LandingPage(tk.Frame):
                 yy,xx=self._np.ogrid[-1:1:complex(h),-1:1:complex(w)]
                 self._vignette=(.45*(1-.20*self._np.minimum(1,xx*xx+yy*yy))).astype("float32")
             rgb=(rgb*self._vignette[...,None]).astype("uint8")
-            from PIL import Image, ImageTk
             picture=Image.fromarray(rgb)
             if self._photo is None or self._photo.width()!=w or self._photo.height()!=h:
                 self._photo=ImageTk.PhotoImage(picture)

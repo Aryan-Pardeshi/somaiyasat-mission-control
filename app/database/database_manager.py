@@ -8,7 +8,7 @@ import threading
 import pandas as pd
 from app import config
 from app.exceptions import DatabaseOperationError
-from app.utils.helpers import mission_code, now_iso
+from app.utils.helpers import format_met, mission_code, now_iso
 
 logger = logging.getLogger(__name__)
 TABLES = frozenset(("telemetry", "packets", "decisions", "incidents", "state_transitions"))
@@ -85,8 +85,10 @@ class DatabaseManager:
     def insert_telemetry(self, mission_id, snapshot) -> None:
         """Persist the sensor values used by analytics."""
         self._write("INSERT INTO telemetry(mission_id,timestamp,mission_time,battery,temperature,signal,power_draw,packet_loss,system_state) VALUES(?,?,?,?,?,?,?,?,?)",
-                    (mission_id, snapshot.timestamp, snapshot.mission_time, snapshot.battery, snapshot.temperature,
-                     snapshot.signal, snapshot.power_draw, snapshot.packet_loss, snapshot.system_state))
+                    # Values are rounded for storage: sensors are not more precise than this.
+                    (mission_id, snapshot.timestamp, round(snapshot.mission_time, 2), round(snapshot.battery, 2),
+                     round(snapshot.temperature, 2), round(snapshot.signal, 2), round(snapshot.power_draw, 3),
+                     round(snapshot.packet_loss, 2), snapshot.system_state))
     def upsert_packet(self, mission_id, packet) -> None:
         """Insert or refresh a packet's current lifecycle state."""
         self._write("""INSERT INTO packets(packet_id,mission_id,packet_type,priority,size_kb,status,created_at,
@@ -95,18 +97,21 @@ class DatabaseManager:
                     transmitted_at=excluded.transmitted_at,retry_count=excluded.retry_count,
                     corrupted=excluded.corrupted,mode=excluded.mode,score=excluded.score""",
                     (packet.packet_id, mission_id, packet.packet_type.value, packet.priority.value, packet.size_kb,
-                     packet.status.value, packet.created_iso, str(packet.selected_at) if packet.selected_at is not None else None,
-                     str(packet.transmitted_at) if packet.transmitted_at is not None else None, packet.retry_count,
-                     int(packet.corrupted), packet.mode_used, packet.score))
+                     packet.status.value, packet.created_iso,
+                     # selected/transmitted times are stored as readable mission-elapsed time (MET)
+                     format_met(packet.selected_at) if packet.selected_at is not None else None,
+                     format_met(packet.transmitted_at) if packet.transmitted_at is not None else None,
+                     packet.retry_count, int(packet.corrupted), packet.mode_used, round(packet.score, 2)))
     def insert_decision(self, mission_id, decision) -> int:
         """Persist a scored routing selection."""
         return self._write("""INSERT INTO decisions(mission_id,packet_id,timestamp,mission_time,selected_mode,
             total_score,priority_score,link_score,urgency_score,energy_score,waiting_score,battery,temperature,
             signal,system_state,reason) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (mission_id, decision.packet_id, decision.timestamp, decision.mission_time, decision.selected_mode,
-             decision.total_score, decision.priority_score, decision.link_score, decision.urgency_score,
-             decision.energy_score, decision.waiting_score, decision.battery, decision.temperature,
-             decision.signal, decision.system_state, decision.reason))
+            (mission_id, decision.packet_id, decision.timestamp, round(decision.mission_time, 2), decision.selected_mode,
+             round(decision.total_score, 2), round(decision.priority_score, 2), round(decision.link_score, 2),
+             round(decision.urgency_score, 2), round(decision.energy_score, 2), round(decision.waiting_score, 2),
+             round(decision.battery, 2), round(decision.temperature, 2), round(decision.signal, 2),
+             decision.system_state, decision.reason))
     def insert_incident(self, mission_id, incident) -> int:
         """Persist an incident and return its row ID."""
         return self._write("INSERT INTO incidents(mission_id,timestamp,mission_time,incident_type,severity,description,resolved) VALUES(?,?,?,?,?,?,?)",

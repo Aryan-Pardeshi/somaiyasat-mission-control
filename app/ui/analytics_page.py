@@ -275,6 +275,10 @@ class AnalyticsPage(BasePage):
         self.pause_button.set_enabled(playing)
         self.pause_button.set_text("RESUME" if ctl.paused else "PAUSE")
         self.reset_button.set_enabled(self._csv_ready)
+        # Reflect the controller's real replay speed (it may be changed elsewhere).
+        speed_label = f"{ctl.replay.speed:g}x"
+        if self.speeds.selected != speed_label:
+            self.speeds.set(speed_label)
 
     def _refresh_missions(self) -> None:
         previous = self.mission_var.get()
