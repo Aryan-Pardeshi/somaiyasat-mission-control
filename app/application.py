@@ -16,7 +16,7 @@ from app.ui.about_dialog import show_about
 from app.ui.components import Card, ModernButton, SidebarButton, StatusBadge
 from app.ui.icons import draw_logo
 from app.ui.landing_page import LandingPage
-from app.ui.theme import COLORS, FONTS, configure_ttk, init_theme, px, status_kind
+from app.ui.theme import COLORS, FONTS, blend, configure_ttk, init_theme, px, status_kind
 from app.ui.ui_state import UIState
 from app.ui.overview_page import OverviewPage
 from app.ui.telemetry_page import TelemetryPage
@@ -36,6 +36,15 @@ PAGES = (
     ("analytics", "Analytics & Replay", "analytics", "Mission Analytics & Replay", AnalyticsPage),
     ("archive", "Archive", "archive", "Mission Archive", ArchivePage),
 )
+SUBTITLES = {
+    "overview": "Live orbit, ground pass and current decision",
+    "telemetry": "Sensor readings with a rolling history",
+    "router": "Safety rules first, then a weighted score",
+    "communications": "Radio modes, active downlink and SSTV viewer",
+    "incidents": "Inject a fault, watch the safety response",
+    "analytics": "Validate, replay, chart and export a mission",
+    "archive": "Stored missions and their decision trail",
+}
 
 
 class MissionControlApp(tk.Tk):
@@ -115,6 +124,9 @@ class MissionControlApp(tk.Tk):
             button = SidebarButton(nav, label, icon, command=lambda k=key: self.show_page(k))
             button.pack(fill="x", pady=px(2))
             self.nav_buttons[key] = button
+        self.nav_indicator = tk.Frame(nav, bg=COLORS["blue"], width=px(3))
+        self._indicator_y: float | None = None
+        self._indicator_job: str | None = None
         foot = tk.Frame(sidebar, bg=COLORS["sidebar"])
         foot.grid(row=3, column=0, sticky="ew", padx=px(11), pady=px(15))
         mission_card = Card(foot, padding=px(12), bg=COLORS["surface"])
@@ -130,13 +142,18 @@ class MissionControlApp(tk.Tk):
         main.grid(row=0, column=1, sticky="nsew")
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(1, weight=1)
-        top = tk.Frame(main, bg=COLORS["surface"], height=px(64))
+        top = tk.Frame(main, bg=COLORS["surface"], height=px(60))
         top.grid(row=0, column=0, sticky="ew")
-        top.grid_propagate(False)
-        self.page_title = tk.Label(top, text="Mission Control Overview", bg=COLORS["surface"], fg=COLORS["text"], font=FONTS["h2"])
-        self.page_title.pack(side="left", padx=px(24))
+        top.pack_propagate(False)
         right = tk.Frame(top, bg=COLORS["surface"])
         right.pack(side="right", padx=px(18))
+        heading = tk.Frame(top, bg=COLORS["surface"])
+        heading.pack(side="left", padx=px(24), fill="y")
+        self.page_title = tk.Label(heading, text="Mission Control Overview", bg=COLORS["surface"], fg=COLORS["text"], font=FONTS["h2"], anchor="w")
+        self.page_title.pack(anchor="w", pady=(px(8), 0))
+        self.page_subtitle = tk.Label(heading, text="", bg=COLORS["surface"], fg=COLORS["muted"], font=FONTS["small"], anchor="w")
+        self.page_subtitle.pack(anchor="w")
+        tk.Frame(main, bg=COLORS["border"], height=px(1)).grid(row=0, column=0, sticky="sew")
         self.link_badge = StatusBadge(right, "NO PASS", bg=COLORS["surface"])
         self.link_badge.pack(side="right", padx=(px(6), 0))
         self.state_badge = StatusBadge(right, "NOMINAL", bg=COLORS["surface"])
@@ -196,21 +213,50 @@ class MissionControlApp(tk.Tk):
         self.current_page = key
         for nav_key, button in self.nav_buttons.items():
             button.set_active(nav_key == key)
+        self.after_idle(self._slide_indicator)
         self.page_title.configure(text=next(item[3] for item in PAGES if item[0] == key))
+        self.page_subtitle.configure(text=SUBTITLES.get(key, ""))
+
+    def _slide_indicator(self) -> None:
+        """Ease the sidebar accent bar toward the active item."""
+        button = self.nav_buttons.get(self.current_page or "")
+        if button is None or self._closing:
+            return
+        target, height = button.winfo_y(), button.winfo_height()
+        if self._indicator_job is not None:
+            self.after_cancel(self._indicator_job)
+            self._indicator_job = None
+        if self._indicator_y is None:
+            self._indicator_y = target
+
+        def step() -> None:
+            self._indicator_y += (target - self._indicator_y) * .28
+            if abs(target - self._indicator_y) < .5:
+                self._indicator_y = target
+            self.nav_indicator.place(x=0, y=round(self._indicator_y) + px(8), height=height - px(16))
+            self.nav_indicator.lift()
+            self._indicator_job = None if self._indicator_y == target else self.after(16, step)
+
+        step()
 
     def notify(self, message: str, kind: str = "info") -> None:
-        """Show a short stack of transient shell messages."""
+        """Stack up to three transient messages in the bottom-right corner."""
         if not self._shell_ready or self._closing:
             return
-        toast = Card(self.toast_host, bg=COLORS["card_hi"], padding=px(11))
         accent = {"success": COLORS["green"], "warning": COLORS["amber"], "critical": COLORS["red"]}.get(kind, COLORS["cyan"])
-        tk.Label(toast.body, text=message, fg=accent, bg=COLORS["card_hi"], font=FONTS["body_bold"], wraplength=px(230), justify="left").pack()
-        toast.pack(fill="x", pady=px(3))
+        toast = Card(self.toast_host, bg=COLORS["card_hi"], border=blend(accent, COLORS["card_hi"], .45), padding=px(10))
+        row = tk.Frame(toast.body, bg=COLORS["card_hi"])
+        row.pack(fill="x")
+        tk.Frame(row, bg=accent, width=px(3)).pack(side="left", fill="y", padx=(0, px(10)))
+        tk.Label(row, text=message, fg=COLORS["text"], bg=COLORS["card_hi"], font=FONTS["small"], wraplength=px(260), justify="left", anchor="w").pack(side="left", fill="x")
+        toast.pack(fill="x", pady=(px(6), 0))
         self._toasts.append(toast)
         if len(self._toasts) > 3:
             self._toasts.pop(0).destroy()
-        self.toast_host.place(relx=1, x=-px(16), y=px(72), anchor="ne")
-        self.toast_host.lift()
+        if self.toast_host.winfo_manager():
+            self.toast_host.lift()
+        else:
+            self._slide_toasts(px(320))
 
         def dismiss() -> None:
             if toast in self._toasts:
@@ -220,6 +266,16 @@ class MissionControlApp(tk.Tk):
                 self.toast_host.place_forget()
 
         self.after(3500, dismiss)
+
+    def _slide_toasts(self, offset: float) -> None:
+        if not self._toasts or self._closing:
+            return
+        self.toast_host.place(relx=1, rely=1, x=-px(20) + round(offset), y=-px(20), anchor="se")
+        self.toast_host.lift()
+        if offset > 1:
+            self.after(16, self._slide_toasts, offset * .72)
+        elif offset:
+            self._slide_toasts(0)
 
     def confirm(self, title: str, message: str) -> bool:
         """Ask before ending an active mission on window close."""
@@ -262,7 +318,7 @@ class MissionControlApp(tk.Tk):
         elif kind == EventType.STATE_CHANGED.value:
             state = str(event.data.get("new", "NOMINAL"))
             self.state_badge.set(state)
-            self.notify(f"State → {state.replace('_', ' ')}", "critical" if status_kind(state) == "critical" else "success" if state == "NOMINAL" else "warning")
+            self.notify(f"Mission state changed to {state.replace('_', ' ').lower()}", "critical" if status_kind(state) == "critical" else "success" if state == "NOMINAL" else "warning")
         elif kind == EventType.TELEMETRY_UPDATE.value:
             self.link_badge.set((self.ui_state.snapshot or {}).get("comm_state", "NO PASS"))
 

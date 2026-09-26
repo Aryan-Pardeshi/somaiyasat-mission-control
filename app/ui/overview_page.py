@@ -6,9 +6,12 @@ import tkinter as tk
 from app import config
 from app.utils.helpers import format_countdown
 from .base_page import BasePage
-from .components import Card, EventFeed, MetricCard, ModernButton, ProgressBar, ScoreBar, StatusBadge, TermLabel
+from .components import Card, EventFeed, MetricCard, ModernButton, ProgressBar, ScoreBar, StatusBadge, TermLabel, add_tooltip
 from .orbit_view import OrbitView
 from .theme import COLORS, FONTS, px
+
+
+TYPE_LABELS = {"TTC": "TT&C", "HOUSEKEEPING": "Housekeeping", "SSTV": "SSTV", "M17": "M17", "CODEC2": "Codec2"}
 
 
 class OverviewPage(BasePage):
@@ -28,7 +31,7 @@ class OverviewPage(BasePage):
             ("temperature", "TEMP", "°C", False), ("power_draw", "POWER", "W", False),
             ("queue", "QUEUE", "", False),
         )):
-            card = MetricCard(metrics, title=title, value="—", unit=unit, status="IDLE", subtitle="Awaiting telemetry", spark=[] if spark else None, padding=px(9))
+            card = MetricCard(metrics, title=title, value="—", unit=unit, status="IDLE", subtitle="Awaiting telemetry", spark=[] if spark else None, padding=px(9), format_string="{:.0f}" if key == "queue" else "{:.1f}")
             card.subtitle_label.pack_configure(pady=(px(2), px(3)))
             card.sparkline.configure(height=px(12))
             card.grid(row=0, column=index, sticky="nsew", padx=(0 if index == 0 else px(5), 0 if index == 4 else px(5)))
@@ -44,8 +47,7 @@ class OverviewPage(BasePage):
         self.orbit.pack(fill="both", expand=True)
         middle = tk.Frame(main, bg=COLORS["bg"])
         middle.grid(row=0, column=1, sticky="nsew", padx=px(3))
-        middle.grid_rowconfigure(0, weight=4)
-        middle.grid_rowconfigure(1, weight=5)
+        middle.grid_rowconfigure(1, weight=1)
         middle.grid_columnconfigure(0, weight=1)
         self._build_pass(middle)
         self._build_decision(middle)
@@ -73,41 +75,46 @@ class OverviewPage(BasePage):
         self.los_value.pack(side="left", padx=px(4))
         self.pass_detail = tk.Label(card.body, text="PASS #0 · SUNLIT", bg=COLORS["card"], fg=COLORS["muted"], font=FONTS["small"], anchor="w")
         self.pass_detail.pack(fill="x", pady=(px(2), 0))
-        self.skip_button = ModernButton(card.body, "Skip to next pass ⏭", command=self._skip_pass, kind="secondary", height=px(27), bg=COLORS["card"])
-        self.skip_button.pack(anchor="w", pady=(px(4), 0))
+        self.skip_button = ModernButton(card.header_right, "Skip ⏭", command=self._skip_pass, kind="secondary", height=px(25), bg=COLORS["card"])
+        self.skip_button.pack(side="right", padx=(0, px(6)))
+        add_tooltip(self.skip_button, "Fast-forward the orbit to the next ground pass (live missions only)")
 
     def _build_decision(self, parent: tk.Frame) -> None:
         card = Card(parent, title="AUTONOMOUS DECISION", padding=px(13))
         card.grid(row=1, column=0, sticky="nsew", pady=(px(7), 0))
         self.decision_badge = StatusBadge(card.header_right, "HOLD", bg=COLORS["card"])
         self.decision_badge.pack(side="right")
-        self.decision_head = tk.Label(card.body, text="HOLDING — No active ground pass", bg=COLORS["card"], fg=COLORS["text"], font=FONTS["h2"], wraplength=px(300), justify="left", anchor="w")
-        self.decision_head.pack(fill="x")
-        self.decision_score = tk.Label(card.body, text="—", bg=COLORS["card"], fg=COLORS["cyan"], font=FONTS["metric_sm"], anchor="w")
-        self.decision_score.pack(fill="x", pady=(px(4), 0))
+        head = tk.Frame(card.body, bg=COLORS["card"])
+        head.pack(fill="x")
+        self.decision_score = tk.Label(head, text="—", bg=COLORS["card"], fg=COLORS["cyan"], font=FONTS["metric_sm"], anchor="e")
+        self.decision_score.pack(side="right", anchor="n", padx=(px(8), 0))
+        self.decision_head = tk.Label(head, text="Holding", bg=COLORS["card"], fg=COLORS["text"], font=FONTS["h2"], wraplength=px(220), justify="left", anchor="w")
+        self.decision_head.pack(side="left", fill="x", expand=True)
         self.reason_brief = tk.Label(card.body, text="Router waiting for a safe link window", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["small"], wraplength=px(300), justify="left", anchor="w")
-        self.reason_brief.pack(fill="x", pady=(px(3), 0))
-        self.expand_button = ModernButton(card.body, "WHY THIS DECISION? ▾", command=self._toggle_detail, kind="ghost", height=px(27), bg=COLORS["card"])
-        self.expand_button.pack(anchor="w", pady=(px(7), 0))
-        self.detail = tk.Frame(card.body, bg=COLORS["card"])
-        self.full_reason = tk.Label(self.detail, text="", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["small"], justify="left", wraplength=px(300), anchor="w")
-        self.full_reason.pack(fill="x")
-        self.bars = ScoreBar(self.detail)
+        self.reason_brief.pack(fill="x", pady=(px(4), px(8)))
+        self.expand_button = ModernButton(card.header_right, "Why?", command=self._toggle_detail, kind="secondary", height=px(25), bg=COLORS["card"])
+        self.expand_button.pack(side="right", padx=(0, px(6)))
+        self.bars = ScoreBar(card.body, compact=True)
         self.bars.pack(fill="x")
+        self._bars_signature: tuple | None = None
+        self.full_reason = tk.Label(card.body, text="", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["small"], justify="left", wraplength=px(300), anchor="nw")
         self._expanded = False
         card.body.bind("<Configure>", lambda e: self._wrap(e.width), add="+")
 
     def _wrap(self, width: int) -> None:
-        for label in (self.decision_head, self.reason_brief, self.full_reason):
+        self.decision_head.configure(wraplength=max(px(120), width-px(90)))
+        for label in (self.reason_brief, self.full_reason):
             label.configure(wraplength=max(px(150), width-px(6)))
 
     def _toggle_detail(self) -> None:
         self._expanded = not self._expanded
         if self._expanded:
-            self.detail.pack(fill="x", pady=(px(5), 0))
+            self.bars.pack_forget()
+            self.full_reason.pack(fill="both", expand=True)
         else:
-            self.detail.pack_forget()
-        self.expand_button.set_text("WHY THIS DECISION? ▴" if self._expanded else "WHY THIS DECISION? ▾")
+            self.full_reason.pack_forget()
+            self.bars.pack(fill="x")
+        self.expand_button.set_text("Scores" if self._expanded else "Why?")
 
     def _skip_pass(self) -> None:
         advanced = self.app.controller.skip_to_next_pass()
@@ -142,18 +149,22 @@ class OverviewPage(BasePage):
         self.skip_button.set_enabled(self.app.controller.mode is not None and self.app.controller.mode.value == "LIVE" and self.app.controller.mission_active)
         decision = state.last_decision or {}
         if decision and state.transmitting_id == decision.get("packet_id"):
-            self.decision_head.configure(text=f"TRANSMIT {decision.get('packet_type', '')} PACKET #{decision.get('packet_id')}")
-            self.decision_score.configure(text=f"{float(decision.get('total_score', 0)):.1f} SCORE")
+            label = TYPE_LABELS.get(str(decision.get("packet_type", "")), str(decision.get("packet_type", "")))
+            self.decision_head.configure(text=f"{label} #{decision.get('packet_id')}")
+            self.decision_score.configure(text=f"{float(decision.get('total_score', 0)):.1f}")
             self.decision_badge.set(decision.get("selected_mode", "ACTIVE"), "active")
-            self.reason_brief.configure(text=f"{decision.get('priority', '')} priority · Link {float(decision.get('signal', 0)):.0f}% · Energy {float(decision.get('energy_cost', 0)):.1f} J")
+            self.reason_brief.configure(text=f"{str(decision.get('priority', '')).capitalize()} priority, link {float(decision.get('signal', 0)):.0f} %, energy {float(decision.get('energy_cost', 0)):.1f} J")
         else:
-            self.decision_head.configure(text=f"HOLDING — {state.hold_reason or 'Router waiting for next packet'}")
-            self.decision_score.configure(text="—")
+            self.decision_head.configure(text="Holding")
+            self.decision_score.configure(text="")
             self.decision_badge.set("HOLD")
-            self.reason_brief.configure(text="Safety rules protect battery, thermal state and RF link")
+            self.reason_brief.configure(text=state.hold_reason or "Router waiting for the next packet")
         self.full_reason.configure(text=decision.get("reason", state.hold_reason or "No packet selected yet"))
-        if self._expanded and decision:
-            self.bars.set([(name.title(), float(decision.get(name+"_score", 0)), weight*100, color) for (name, weight), color in zip(config.ROUTING_WEIGHTS.items(), (COLORS["cyan"], COLORS["blue"], COLORS["purple"], COLORS["green"], COLORS["amber"]))])
+        bars = [(name.title(), float(decision.get(name+"_score", 0)), weight*100, color) for (name, weight), color in zip(config.ROUTING_WEIGHTS.items(), (COLORS["cyan"], COLORS["blue"], COLORS["purple"], COLORS["green"], COLORS["amber"]))] if decision else []
+        signature = (decision.get("decision_id", decision.get("packet_id")), tuple(round(b[1], 1) for b in bars))
+        if signature != self._bars_signature:
+            self._bars_signature = signature
+            self.bars.set(bars)
         self.orbit.update_state(info, snap, (state.transmission or {}).get("mode"))
 
     def on_show(self) -> None:

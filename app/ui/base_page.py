@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from .theme import COLORS, FONTS, px
+from .theme import COLORS, px
 
 
 class BasePage(tk.Frame):
@@ -16,22 +16,10 @@ class BasePage(tk.Frame):
         self.subtitle = ""
         self.visible = False
 
-    def build_header(self, title: str, subtitle: str, right_widgets_frame: bool = True):
-        """Pack a consistent two-line page heading; return optional right slot."""
+    def build_header(self, title: str, subtitle: str) -> None:
+        """Record the heading (the shell top bar shows it) and add the top gutter."""
         self.title, self.subtitle = title, subtitle
-        row = tk.Frame(self, bg=COLORS["bg"])
-        row.pack(fill="x", padx=px(24), pady=(px(20), px(18)))
-        text = tk.Frame(row, bg=COLORS["bg"])
-        text.pack(side="left", fill="x", expand=True)
-        tk.Label(text, text=title, font=FONTS["h1"], fg=COLORS["text"],
-                 bg=COLORS["bg"], anchor="w").pack(fill="x")
-        tk.Label(text, text=subtitle, font=FONTS["small"], fg=COLORS["text_2"],
-                 bg=COLORS["bg"], anchor="w").pack(fill="x", pady=(px(3), 0))
-        if right_widgets_frame:
-            slot = tk.Frame(row, bg=COLORS["bg"])
-            slot.pack(side="right", padx=(px(12), 0))
-            return slot
-        return None
+        tk.Frame(self, bg=COLORS["bg"], height=px(17)).pack(fill="x")
 
     def on_show(self) -> None:
         self.visible = True

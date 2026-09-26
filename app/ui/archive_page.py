@@ -44,7 +44,7 @@ class ArchivePage(BasePage):
         self._search_job: str | None = None
         self._rows: list[dict] = []
         controls = tk.Frame(self, bg=COLORS["bg"])
-        controls.pack(fill="x", padx=px(24), pady=(0, px(10)))
+        controls.pack(fill="x", padx=px(17), pady=(0, px(10)))
         tk.Label(controls, text="SEARCH", bg=COLORS["bg"], fg=COLORS["muted"],
                  font=FONTS["caption"]).pack(side="left", padx=(0, px(7)))
         self.search_var = tk.StringVar()
@@ -55,16 +55,16 @@ class ArchivePage(BasePage):
         self.search_var.trace_add("write", self._schedule_search)
         self.mode_filter = SegmentedControl(controls, ("All", "LIVE", "REPLAY"), command=lambda _: self.refresh())
         self.mode_filter.pack(side="left", padx=(0, px(10)))
-        ModernButton(controls, "REFRESH", command=self.refresh, bg=COLORS["bg"]).pack(side="left")
+        ModernButton(controls, "Refresh", command=self.refresh, bg=COLORS["bg"]).pack(side="left")
         self.count_label = tk.Label(controls, text="0 missions", bg=COLORS["bg"],
                                     fg=COLORS["text_2"], font=FONTS["small"])
         self.count_label.pack(side="right")
         self.scroller = ScrollableFrame(self)
-        self.scroller.pack(fill="both", expand=True, padx=px(24), pady=(0, px(14)))
+        self.scroller.pack(fill="both", expand=True, padx=px(17), pady=(0, px(14)))
         content = self.scroller.body
         listing = Card(content, title="Missions", padding=px(11))
         listing.pack(fill="x", pady=(0, px(10)))
-        listing.configure(height=px(185))
+        listing.configure(height=px(265))
         listing.pack_propagate(False)
         self.missions = DataTable(listing.body, [
             ("mission_code", "MISSION", 160, "w"), ("mode", "MODE", 60, "w"),
@@ -84,8 +84,8 @@ class ArchivePage(BasePage):
         self.detail_title.pack(side="left")
         self.detail_mode = StatusBadge(heading, "—", kind="neutral", bg=COLORS["card"])
         self.detail_mode.pack(side="left", padx=px(9))
-        ModernButton(heading, "EXPORT CSV", command=self._export, bg=COLORS["card"]).pack(side="right")
-        ModernButton(heading, "ANALYZE IN ANALYTICS", command=self._analyze,
+        ModernButton(heading, "Export CSV", command=self._export, bg=COLORS["card"]).pack(side="right")
+        ModernButton(heading, "Open in analytics", command=self._analyze,
                      kind="primary", bg=COLORS["card"]).pack(side="right", padx=(0, px(7)))
         self.detail_dates = tk.Label(detail.body, text="", bg=COLORS["card"], fg=COLORS["text_2"],
                                       font=FONTS["small"], anchor="w")

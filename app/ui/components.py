@@ -84,7 +84,7 @@ class StatusBadge(tk.Canvas):
             self._tick()
 
     def set(self, text: str, kind: str | None = None) -> None:
-        self.text = str(text).upper()
+        self.text = str(text).upper().replace("_", " ")
         self.kind = kind or status_kind(text)
         color = STATUS_COLORS.get(self.kind, COLORS["grey"])
         face = blend(color, self.parent_bg, .16)
@@ -214,7 +214,7 @@ class SidebarButton(tk.Frame):
         fg=COLORS["text"] if self.active else COLORS["text_2"]
         for widget in (self,self.symbol,self.label):widget.configure(bg=bg)
         self.label.configure(fg=fg)
-        self.accent.configure(bg=COLORS["blue"] if self.active else bg)
+        self.accent.configure(bg=bg)
         self.symbol.delete("all")
         draw_icon(self.symbol,self.icon,px(12),px(12),px(17),COLORS["blue"] if self.active else fg)
 
@@ -401,4 +401,4 @@ class MetricCard(Card):
 # controls by responsibility so no source file grows unwieldy.
 from ._components_extra import (EventFeed, DataTable, Tooltip, add_tooltip,
                                 SegmentedControl, KeyValueList, ScoreBar,
-                                ScrollableFrame, TermLabel, GLOSSARY)
+                                ScrollableFrame, TermLabel, GLOSSARY, humanize, RingGauge)

@@ -5,13 +5,13 @@ import tkinter as tk
 from tkinter import font as tkfont, ttk
 
 COLORS = {
-    "bg": "#0A0C10", "sidebar": "#0D1015", "surface": "#101318",
-    "card": "#14181F", "card_hi": "#1A1F28", "card_hover": "#1E242E",
-    "border": "#232A34", "border_hi": "#303947", "text": "#F2F4F7",
-    "text_2": "#B4BCC8", "muted": "#7E8898", "green": "#30D158",
-    "amber": "#FF9F0A", "red": "#FF453A", "blue": "#0A84FF",
-    "cyan": "#64D2FF", "teal": "#40C8E0", "purple": "#BF5AF2",
-    "indigo": "#5E5CE6", "grey": "#8E8E93",
+    "bg": "#070A12", "sidebar": "#090D17", "surface": "#0B101B",
+    "card": "#0F1624", "card_hi": "#152034", "card_hover": "#1A2740",
+    "border": "#1C2840", "border_hi": "#2A3A58", "text": "#EDF2FA",
+    "text_2": "#A7B3C8", "muted": "#6C7A93", "green": "#34D399",
+    "amber": "#FFB020", "red": "#FF5A6A", "blue": "#3E8BFF",
+    "cyan": "#38D6F5", "teal": "#2DD4BF", "purple": "#A78BFA",
+    "indigo": "#818CF8", "grey": "#8A94A6",
 }
 STATUS_COLORS = {
     **dict.fromkeys(("nominal", "sent", "healthy", "ready"), COLORS["green"]),
@@ -69,6 +69,9 @@ def init_theme(root: tk.Misc) -> None:
     FONTS.update({name: ((_MONO if name == "mono" else _FAMILY), size, weight)
                   for name, (size, weight) in _PRESETS.items()})
     root.configure(bg=COLORS["bg"])
+    import matplotlib
+    matplotlib.rcParams["font.family"] = "sans-serif"
+    matplotlib.rcParams["font.sans-serif"] = ["Segoe UI", "Helvetica Neue", "Arial", "DejaVu Sans"]
 
 
 def status_kind(text: str) -> str:
@@ -87,6 +90,10 @@ def status_kind(text: str) -> str:
         "SELECTED": "selected", "QUEUED": "queued", "IDLE": "idle",
         "INACTIVE": "inactive", "PRE_PASS": "idle", "LOS": "idle",
         "NO_PASS": "idle", "HOLD": "warning", "REPLAY": "info",
+        "REQUEUED": "warning", "SUSPENDED": "warning", "SIGNAL_LOW": "warning",
+        "INTERRUPTED": "failed", "QUARANTINED": "failed",
+        "RECEIVING": "active", "RUNNING": "active", "IMAGE_RECEIVED": "sent",
+        "COMPLETED": "sent", "STANDBY": "idle",
     }
     return exact.get(value, value.lower() if value.lower() in STATUS_COLORS else "neutral")
 

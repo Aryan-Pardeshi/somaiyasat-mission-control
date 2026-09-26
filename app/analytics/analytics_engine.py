@@ -28,10 +28,10 @@ logger = logging.getLogger(__name__)
 
 # Colours match the Tkinter theme so charts look like part of the app.
 DARK_CHART = {
-    "background": "#12161C", "text": "#B4BCC8", "title": "#F2F4F7", "grid": "#252C36",
-    "battery": "#30D158", "signal": "#64D2FF", "temperature": "#FF9F0A",
-    "power": "#BF5AF2", "failed": "#FF453A", "sent": "#30D158",
-    "deferred": "#FF9F0A", "queued": "#7B8594", "dropped": "#B8434A",
+    "background": "#0F1624", "text": "#A7B3C8", "title": "#EDF2FA", "grid": "#1C2840",
+    "battery": "#34D399", "signal": "#38D6F5", "temperature": "#FFB020",
+    "power": "#A78BFA", "failed": "#FF5A6A", "sent": "#34D399",
+    "deferred": "#FFB020", "queued": "#6C7A93", "dropped": "#C2414F",
 }
 STATUS_COLORS = {
     "SENT": DARK_CHART["sent"], "QUEUED": DARK_CHART["queued"], "DEFERRED": DARK_CHART["deferred"],

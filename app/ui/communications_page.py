@@ -2,14 +2,18 @@
 from __future__ import annotations
 
 import tkinter as tk
+from collections import deque
 
 from app import config
 from app.models.enums import CommunicationType, PacketPriority, PacketType
 from app.models.packet import create_packet
 from .base_page import BasePage
-from .components import Card, KeyValueList, ModernButton, ProgressBar, StatusBadge, TermLabel
+from .components import Card, DataTable, ModernButton, ProgressBar, StatusBadge, TermLabel
 from .sstv_viewer import SSTVViewer
 from .theme import COLORS, FONTS, px
+
+
+MODE_LABELS = {"TTC": "TT&C", "SSTV": "SSTV", "M17": "M17", "CODEC2": "Codec2", "HOUSEKEEPING": "TT&C"}
 
 
 class _TransmissionFacts(tk.Frame):
@@ -54,7 +58,7 @@ class CommunicationsPage(BasePage):
             card.grid(row=0, column=index, sticky="nsew", padx=(0 if index == 0 else px(5), 0 if index == 3 else px(5)))
             head = tk.Frame(card.body, bg=COLORS["card"])
             head.pack(fill="x", pady=(0, px(9)))
-            TermLabel(head, label).pack(side="left")
+            TermLabel(head, label, font=FONTS["h2"], fg=COLORS["text"]).pack(side="left")
             badge = StatusBadge(head, "NO PASS", bg=COLORS["card"])
             badge.pack(side="right")
             facts: dict[str, tk.Label] = {}
@@ -78,15 +82,22 @@ class CommunicationsPage(BasePage):
         self.tx_badge = StatusBadge(current.header_right, "IDLE", bg=COLORS["card"])
         self.tx_badge.pack(side="right")
         self.tx_head = tk.Label(current.body, text="Link idle — waiting for the router", bg=COLORS["card"], fg=COLORS["text"], font=FONTS["h2"], anchor="w", wraplength=px(360), justify="left")
-        self.tx_head.pack(fill="x", pady=(px(11), px(9)))
+        self.tx_head.pack(fill="x", pady=(px(2), px(4)))
         self.tx_percent = tk.Label(current.body, text="0%", bg=COLORS["card"], fg=COLORS["cyan"], font=FONTS["metric"], anchor="w")
         self.tx_percent.pack(fill="x")
         self.tx_progress = ProgressBar(current.body, bg=COLORS["card"])
-        self.tx_progress.pack(fill="x", pady=(0, px(15)))
+        self.tx_progress.pack(fill="x", pady=(px(2), px(10)))
         self.tx_facts = _TransmissionFacts(current.body)
         self.tx_facts.pack(fill="x")
         self.request_button = ModernButton(current.body, "Request SSTV image downlink", command=self._request_sstv, kind="primary", height=px(30), bg=COLORS["card"])
-        self.request_button.pack(anchor="w", pady=(px(4), 0))
+        self.request_button.pack(anchor="w", pady=(px(8), 0))
+        tk.Label(current.body, text="RECENT DOWNLINKS", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["caption"], anchor="w").pack(fill="x", pady=(px(14), px(6)))
+        self.history_table = DataTable(current.body, [
+            ("met", "MET", 70, "w"), ("packet", "PACKET", 70, "w"),
+            ("mode", "MODE", 70, "w"), ("size", "KB", 55, "e"), ("result", "RESULT", 90, "w"),
+        ])
+        self.history_table.pack(fill="both", expand=True)
+        self._history: deque[dict] = deque(maxlen=30)
         self.viewer = SSTVViewer(content, app.sstv_image)
         self.viewer.grid(row=0, column=1, sticky="nsew", padx=(px(7), 0))
         self._tx_packet: dict = {}
@@ -144,7 +155,7 @@ class CommunicationsPage(BasePage):
         if data and packet_id:
             mode = data.get("mode", packet.get("mode", "—"))
             self.tx_badge.set("TRANSMITTING")
-            self.tx_head.configure(text=f"PACKET #{packet_id} · {mode}", fg=COLORS["text"])
+            self.tx_head.configure(text=f"Packet #{packet_id} over {MODE_LABELS.get(str(mode), mode)}", fg=COLORS["text"])
             progress = float(data.get("progress", 0))
             self.tx_percent.configure(text=f"{progress*100:.0f}%")
             self.tx_progress.set(progress, COLORS["cyan"])
@@ -158,7 +169,7 @@ class CommunicationsPage(BasePage):
             packet = self._failure.get("packet") or {}
             reason = self._failure.get("reason", "link interrupted")
             self.tx_badge.set("INTERRUPTED", "failed")
-            self.tx_head.configure(text=f"INTERRUPTED — {reason}", fg=COLORS["red"])
+            self.tx_head.configure(text=f"Interrupted: {reason}", fg=COLORS["red"])
             self.tx_percent.configure(text=f"{100*float(self._failure.get('progress', 0)):.0f}%")
             self.tx_progress.set(float(self._failure.get("progress", 0)), COLORS["red"])
             retry = int(packet.get("retry_count", 0))
@@ -180,11 +191,23 @@ class CommunicationsPage(BasePage):
             ])
         self.request_button.set_enabled(self.app.controller.mission_active)
 
+    def _log(self, data: dict, result: str) -> None:
+        packet = data.get("packet") or {}
+        self._history.appendleft({
+            "key": f"{packet.get('packet_id')}:{len(self._history)}:{self.app.ui_state.met}",
+            "met": self.app.ui_state.met, "packet": f"#{packet.get('packet_id', '—')}",
+            "mode": data.get("mode", packet.get("mode", "—")),
+            "size": f"{float(packet.get('size_kb') or 0):.1f}", "result": result,
+        })
+        if self.visible:
+            self.history_table.set_rows(list(self._history), iid_key="key", tag_key="result")
+
     def on_show(self) -> None:
         super().on_show()
         self.viewer.set_visible(True)
         self._render_modes()
         self._render_transmission()
+        self.history_table.set_rows(list(self._history), iid_key="key", tag_key="result")
 
     def on_hide(self) -> None:
         self.viewer.set_visible(False)
@@ -202,13 +225,17 @@ class CommunicationsPage(BasePage):
         elif kind == "TRANSMISSION_FAILED":
             self._failure = dict(event.data)
             self._tx_event = {}
+            self._log(event.data, "REQUEUED" if event.data.get("requeued") else "FAILED")
         elif kind == "TRANSMISSION_COMPLETE":
             self._failure = None
             self._tx_event = {}
+            self._log(event.data, "SENT")
         elif kind == "MISSION_STARTED":
             self._tx_packet = {}
             self._tx_event = {}
             self._failure = None
+            self._history.clear()
+            self.history_table.set_rows([])
         if self.visible and kind in ("TELEMETRY_UPDATE", "QUEUE_UPDATE", "TRANSMISSION_STARTED", "TRANSMISSION_PROGRESS", "TRANSMISSION_COMPLETE", "TRANSMISSION_FAILED", "STATE_CHANGED", "MISSION_STARTED"):
             self._render_modes()
             self._render_transmission()

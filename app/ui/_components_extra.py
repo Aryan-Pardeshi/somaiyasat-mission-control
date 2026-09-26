@@ -1,6 +1,7 @@
 """Table, feed and layout controls re-exported by components.py."""
 from __future__ import annotations
 
+import math
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable
@@ -11,39 +12,49 @@ from .components import LevelBar, rounded_rect
 
 
 class EventFeed(tk.Frame):
-    """Newest-first, bounded operator event log."""
+    """Newest-first, bounded operator event log: a meta line, then the message."""
+
+    SOURCES = {"INFO": COLORS["cyan"], "WARNING": COLORS["amber"], "CRITICAL": COLORS["red"],
+               "SYSTEM": COLORS["purple"], "ROUTER": COLORS["blue"]}
 
     def __init__(self,parent,bg=COLORS["card"],**kw):
         super().__init__(parent,bg=bg,**kw)
         self.text=tk.Text(self,bg=bg,fg=COLORS["text"],font=FONTS["small"],
                           bd=0,highlightthickness=0,wrap="word",state="disabled",
-                          padx=px(5),pady=px(3),spacing2=px(3))
+                          padx=px(2),pady=px(2),cursor="arrow")
         self.text.pack(side="left",fill="both",expand=True)
         scroll=ttk.Scrollbar(self,orient="vertical",style="Dark.Vertical.TScrollbar",
                              command=self.text.yview)
         scroll.pack(side="right",fill="y")
         self.text.configure(yscrollcommand=scroll.set)
         self.text.tag_configure("time",foreground=COLORS["muted"],font=FONTS["mono"])
-        for severity,color in {"INFO":COLORS["cyan"],"WARNING":COLORS["amber"],
-                               "CRITICAL":COLORS["red"],"SYSTEM":COLORS["purple"],
-                               "ROUTER":COLORS["blue"]}.items():
-            self.text.tag_configure(severity,foreground=color,font=FONTS["caption"])
+        self.text.tag_configure("message",foreground=COLORS["text_2"],spacing1=px(2),spacing3=px(10))
+        for source,color in self.SOURCES.items():
+            self.text.tag_configure(source,foreground=color,font=FONTS["caption"])
+        self._entries=0
 
     def add(self,met: str,severity: str,message: str):
+        source=severity.upper() if severity.upper() in self.SOURCES else "INFO"
         self.text.configure(state="normal")
-        line=f"{met:>8}  {severity.upper():<8}  {message}\n"
-        self.text.insert("1.0",line)
-        self.text.tag_add("time","1.0","1.10")
-        self.text.tag_add(severity.upper(),"1.10","1.19")
-        line_count=int(self.text.index("end-1c").split(".")[0])
-        if line_count>config.EVENT_FEED_MAX_LINES:
-            self.text.delete(f"{config.EVENT_FEED_MAX_LINES+1}.0","end")
+        self.text.insert("1.0",f"{met}   ","time",source.title()+"\n",source,message+"\n","message")
+        self._entries+=1
+        if self._entries>config.EVENT_FEED_MAX_LINES:
+            self.text.delete(f"{2*config.EVENT_FEED_MAX_LINES+1}.0","end")
+            self._entries=config.EVENT_FEED_MAX_LINES
         self.text.configure(state="disabled")
 
     def clear(self):
         self.text.configure(state="normal")
         self.text.delete("1.0","end")
         self.text.configure(state="disabled")
+        self._entries=0
+
+
+def humanize(value):
+    """Show enum-style codes such as THERMAL_ALERT as THERMAL ALERT."""
+    if isinstance(value,str) and "_" in value and value.upper()==value:
+        return value.replace("_"," ")
+    return value
 
 
 class DataTable(tk.Frame):
@@ -63,16 +74,27 @@ class DataTable(tk.Frame):
         self.grid_columnconfigure(0,weight=1)
         vs=ttk.Scrollbar(self,orient="vertical",style="Dark.Vertical.TScrollbar",command=self.tree.yview)
         vs.grid(row=0,column=1,sticky="ns")
-        hs=ttk.Scrollbar(self,orient="horizontal",style="Dark.Horizontal.TScrollbar",command=self.tree.xview)
-        hs.grid(row=1,column=0,sticky="ew")
-        self.tree.configure(yscrollcommand=vs.set,xscrollcommand=hs.set)
+        self.tree.configure(yscrollcommand=vs.set)
         for key,heading,width,anchor in columns:
-            self.tree.heading(key,text=heading,command=lambda col=key:self._sort(col))
-            self.tree.column(key,width=px(width),minwidth=px(45),anchor=anchor,stretch=True)
+            self.tree.heading(key,text=heading,anchor=anchor,command=lambda col=key:self._sort(col))
+            self.tree.column(key,width=px(width),minwidth=px(40),anchor=anchor,stretch=False)
+        self.tree.bind("<Configure>",self._fit_columns,add="+")
         self.tree.tag_configure("odd",background=blend(COLORS["text"],bg,.025))
         for kind,color in STATUS_COLORS.items():
             self.tree.tag_configure(kind,foreground=color)
         self.tree.bind("<<TreeviewSelect>>",self._selected)
+
+    def _fit_columns(self,event=None):
+        # Columns share the visible width in proportion to their design widths,
+        # so tables never need a horizontal scrollbar.
+        available=(event.width if event else self.tree.winfo_width())-px(2)
+        total=sum(width for _,_,width,_ in self.columns)
+        if available<px(100) or total<=0:return
+        used=0
+        for index,(key,_,width,_) in enumerate(self.columns):
+            size=available-used if index==len(self.columns)-1 else int(available*width/total)
+            self.tree.column(key,width=max(px(40),size))
+            used+=size
 
     def set_rows(self,rows: list[dict],iid_key=None,tag_key=None):
         old_selection=self.tree.selection()
@@ -82,7 +104,7 @@ class DataTable(tk.Frame):
             iid=str(row.get(iid_key,index)) if iid_key else str(index)
             if iid in desired:iid=f"{iid}:{index}"
             desired.append(iid)
-            values=tuple(row.get(col[0],"") for col in self.columns)
+            values=tuple(humanize(row.get(col[0],"")) for col in self.columns)
             kind=status_kind(row.get(tag_key,"")) if tag_key else ""
             tags=(("odd",) if index%2 else ()) + ((kind,) if kind and kind!="neutral" else ())
             if iid in self.tree.get_children(""):
@@ -218,9 +240,10 @@ class SegmentedControl(tk.Frame):
 class KeyValueList(tk.Frame):
     """Two-column facts. Unknown keys are appended by ``set``."""
 
-    def __init__(self,parent,rows=None,bg=COLORS["card"],row_pady=None,**kw):
+    def __init__(self,parent,rows=None,bg=COLORS["card"],row_pady=None,value_font=None,**kw):
         super().__init__(parent,bg=bg,**kw)
         self._labels={}
+        self.value_font=value_font or FONTS["body_bold"]
         self.row_pady = px(5) if row_pady is None else row_pady
         for key,value in rows or []:self.set(key,value)
 
@@ -230,7 +253,7 @@ class KeyValueList(tk.Frame):
             row.pack(fill="x",pady=self.row_pady)
             tk.Label(row,text=str(key),bg=row.cget("bg"),fg=COLORS["text_2"],
                      font=FONTS["small"]).pack(side="left")
-            label=tk.Label(row,bg=row.cget("bg"),fg=COLORS["text"],font=FONTS["body_bold"])
+            label=tk.Label(row,bg=row.cget("bg"),fg=COLORS["text"],font=self.value_font)
             label.pack(side="right")
             self._labels[key]=label
         self._labels[key].configure(text=str(value),fg=color or COLORS["text"])
@@ -318,14 +341,90 @@ GLOSSARY={
 
 
 class TermLabel(tk.Label):
-    """A help term with a dotted underline and glossary tooltip."""
+    """A help term; hovering shows its glossary definition."""
 
     def __init__(self,parent,term: str,text=None,bg=COLORS["card"],**kw):
-        super().__init__(parent,text=text or term,bg=bg,fg=COLORS["text_2"],
-                         font=FONTS["small"],cursor="question_arrow",**kw)
+        kw.setdefault("font",FONTS["small"])
+        kw.setdefault("fg",COLORS["text_2"])
+        super().__init__(parent,text=text or term,bg=bg,cursor="question_arrow",**kw)
         self.tooltip=Tooltip(self,GLOSSARY.get(term,term))
-        self.bind("<Configure>",self._underline,add="+")
 
-    def _underline(self,_=None):
-        # Tk labels cannot draw an underline; the font underline is a clean equivalent.
-        self.configure(font=(*FONTS["small"],"underline"))
+
+class RingGauge(tk.Canvas):
+    """A 270° gauge whose gradient arc eases toward each new reading."""
+
+    START,SWEEP=225,270
+
+    def __init__(self,parent,unit="",fmt="{:.1f}",colors=(COLORS["blue"],COLORS["cyan"]),
+                 bg=COLORS["card"],size=None,**kw):
+        size=size or px(138)
+        super().__init__(parent,width=size,height=size,bg=bg,highlightthickness=0,bd=0,**kw)
+        self.bg,self.unit,self.fmt,self.colors=bg,unit,fmt,colors
+        self.fraction=self._target=0.
+        self.value=None
+        self._shown=None
+        self._job=None
+        self.bind("<Configure>",lambda _e:self._draw())
+
+    def set(self,value,fraction,colors=None):
+        self._target=max(0.,min(1.,float(fraction)))
+        if colors:self.colors=colors
+        self.value=value
+        if not isinstance(value,(int,float)):self._shown=None
+        elif self._shown is None:self._shown=float(value)
+        if self._job is None:self._animate()
+
+    def _animate(self):
+        self.fraction+=(self._target-self.fraction)*.16
+        numeric=isinstance(self.value,(int,float)) and self._shown is not None
+        if numeric:self._shown+=(self.value-self._shown)*.16
+        done=abs(self._target-self.fraction)<.002 and (not numeric or abs(self.value-self._shown)<.01)
+        if done:
+            self.fraction=self._target
+            if numeric:self._shown=float(self.value)
+        self._draw()
+        self._job=None if done else self.after(16,self._animate)
+
+    def _point(self,cx,cy,r,angle):
+        radians=math.radians(angle)
+        return cx+r*math.cos(radians),cy-r*math.sin(radians)
+
+    def _draw(self):
+        self.delete("all")
+        w,h=self.winfo_width(),self.winfo_height()
+        if w<4:w=int(self.cget("width"))
+        if h<4:h=int(self.cget("height"))
+        d=min(w,h)
+        cx,cy=w/2,h/2+d*.04
+        thick=max(px(7),d*.07)
+        r=d/2-thick*1.4
+        box=(cx-r,cy-r,cx+r,cy+r)
+        self.create_arc(*box,start=self.START,extent=-self.SWEEP,style="arc",width=thick,
+                        outline=blend(COLORS["border_hi"],self.bg,.75))
+        low,high=self.colors
+        if self.fraction>.003:
+            sweep=self.SWEEP*self.fraction
+            self.create_arc(*box,start=self.START,extent=-sweep,style="arc",width=thick*2.6,
+                            outline=blend(high,self.bg,.10))
+            self.create_arc(*box,start=self.START,extent=-sweep,style="arc",width=thick*1.7,
+                            outline=blend(high,self.bg,.18))
+            steps=max(2,int(48*self.fraction))
+            for i in range(steps):
+                start=self.START-sweep*i/steps
+                self.create_arc(*box,start=start,extent=-(sweep/steps+.9),style="arc",width=thick,
+                                outline=blend(high,low,i/(steps-1)))
+            for angle,color in ((self.START,low),(self.START-sweep,high)):
+                x,y=self._point(cx,cy,r,angle)
+                self.create_oval(x-thick/2,y-thick/2,x+thick/2,y+thick/2,fill=color,outline="")
+            x,y=self._point(cx,cy,r,self.START-sweep)
+            self.create_oval(x-thick*.22,y-thick*.22,x+thick*.22,y+thick*.22,
+                             fill=blend(COLORS["text"],high,.7),outline="")
+        text=self.fmt.format(self._shown) if self._shown is not None else str(self.value if self.value is not None else "—")
+        size=max(11,round(d/px(7.2)))
+        self.create_text(cx,cy-d*.03,text=text,fill=COLORS["text"],font=(FONTS["metric"][0],size,"bold"))
+        if self.unit:
+            self.create_text(cx,cy+d*.14,text=self.unit,fill=COLORS["muted"],font=FONTS["small"])
+
+    def destroy(self):
+        if self._job is not None:self.after_cancel(self._job)
+        super().destroy()

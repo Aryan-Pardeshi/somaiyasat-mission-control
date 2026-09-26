@@ -39,39 +39,45 @@ class IncidentsPage(BasePage):
         self.build_header("Incident Simulator", "Inject a fault and observe the autonomous safety response")
         self.transitions: deque[str] = deque(maxlen=6)
         self.buttons: dict[IncidentType, ModernButton] = {}
-        self.cards: dict[IncidentType, Card] = {}
+        self.cards: dict[IncidentType, tk.Frame] = {}
         layout = tk.Frame(self, bg=COLORS["bg"])
-        layout.pack(fill="both", expand=True, padx=px(24), pady=(0, px(14)))
+        layout.pack(fill="both", expand=True, padx=px(17), pady=(0, px(14)))
         layout.grid_columnconfigure(0, weight=3)
         layout.grid_columnconfigure(1, weight=2)
         layout.grid_rowconfigure(0, weight=1)
-        layout.grid_rowconfigure(1, minsize=px(170))
-        left = ScrollableFrame(layout)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, px(12)))
-        left.body.grid_columnconfigure((0, 1), weight=1, uniform="incident")
-        for i, (kind, title, description, severity) in enumerate(ACTIONS):
-            card = Card(left.body, padding=px(10), hover=True)
-            card.grid(row=i // 2, column=i % 2, sticky="nsew",
-                      padx=(0, px(5)) if i % 2 == 0 else (px(5), 0), pady=(0, px(9)))
-            self.cards[kind] = card
-            heading = tk.Frame(card.body, bg=COLORS["card"])
-            heading.pack(fill="x")
+        layout.grid_rowconfigure(1, minsize=px(128))
+        faults = Card(layout, title="Fault injection", padding=px(12))
+        faults.grid(row=0, column=0, sticky="nsew", padx=(0, px(12)))
+        self.fault_hint = tk.Label(faults.header_right, text="", bg=COLORS["card"], fg=COLORS["muted"], font=FONTS["small"])
+        self.fault_hint.pack(side="right")
+        rows = ScrollableFrame(faults.body, bg=COLORS["card"])
+        rows.pack(fill="both", expand=True)
+        self._descriptions: list[tk.Label] = []
+        for index, (kind, title, description, severity) in enumerate(ACTIONS):
             accent = COLORS["green"] if severity == "success" else COLORS["red"] if severity == "critical" else COLORS["amber"]
-            tk.Label(heading, text="●", bg=COLORS["card"], fg=accent, font=FONTS["body_bold"]).pack(side="left", padx=(0, px(5)))
-            StatusBadge(heading, "OK" if severity == "success" else "CRIT" if severity == "critical" else "WARN", kind="nominal" if severity == "success" else severity,
-                        bg=COLORS["card"]).pack(side="right")
-            tk.Label(card.body, text=title, bg=COLORS["card"], fg=COLORS["text"],
-                     font=FONTS["caption"], anchor="w", justify="left",
-                     wraplength=px(190)).pack(fill="x", pady=(px(3), 0))
-            tk.Label(card.body, text=description, bg=COLORS["card"], fg=COLORS["text_2"],
-                     font=FONTS["small"], wraplength=px(155), justify="left", anchor="w").pack(fill="x", pady=(px(4), px(6)))
-            button = ModernButton(card.body, "RESTORE" if severity == "success" else "INJECT INCIDENT",
+            if index:
+                tk.Frame(rows.body, bg=COLORS["border"], height=px(1)).pack(fill="x")
+            row = tk.Frame(rows.body, bg=COLORS["card"])
+            row.pack(fill="x", pady=px(2))
+            tk.Frame(row, bg=accent, width=px(3)).pack(side="left", fill="y", padx=(0, px(11)))
+            button = ModernButton(row, "Restore" if severity == "success" else "Inject",
                                   command=lambda selected=kind: self._inject(selected),
-                                  kind="success" if severity == "success" else "danger", height=px(29), bg=COLORS["card"])
-            button.pack(anchor="w")
+                                  kind="success" if severity == "success" else "danger",
+                                  width=px(92), height=px(30), bg=COLORS["card"])
+            button.pack(side="right", padx=(px(10), px(4)))
+            text = tk.Frame(row, bg=COLORS["card"])
+            text.pack(side="left", fill="x", expand=True)
+            tk.Label(text, text=title.capitalize(), bg=COLORS["card"], fg=COLORS["text"],
+                     font=FONTS["body_bold"], anchor="w").pack(fill="x")
+            label = tk.Label(text, text=description, bg=COLORS["card"], fg=COLORS["text_2"],
+                             font=FONTS["small"], anchor="w", justify="left", wraplength=px(360))
+            label.pack(fill="x")
+            self._descriptions.append(label)
+            self.cards[kind] = row
             self.buttons[kind] = button
             if kind in (IncidentType.BATTERY_DRAIN, IncidentType.THERMAL_SPIKE):
                 add_tooltip(button, "Unavailable in replay: battery and temperature come from the CSV.")
+        rows.body.bind("<Configure>", lambda e: [d.configure(wraplength=max(px(160), e.width-px(150))) for d in self._descriptions], add="+")
         right = ScrollableFrame(layout)
         right.grid(row=0, column=1, sticky="nsew")
         response = Card(right.body, title="Autonomous response", padding=px(14))
@@ -91,7 +97,7 @@ class IncidentsPage(BasePage):
         self.timeline = self._section(response.body, "STATE TRANSITIONS")
         history = Card(layout, title="Incident history", padding=px(11))
         history.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(px(10), 0))
-        history.configure(height=px(170))
+        history.configure(height=px(128))
         history.pack_propagate(False)
         self.table = DataTable(history.body, [
             ("met", "MET", 65, "w"), ("incident_type", "TYPE", 135, "w"),
@@ -121,16 +127,23 @@ class IncidentsPage(BasePage):
         message = self.app.controller.inject_incident(kind)
         severity = next(item[3] for item in ACTIONS if item[0] is kind)
         self.app.notify(message, "success" if severity == "success" else severity)
-        card = self.cards[kind]
-        card.border_color = COLORS["green"] if severity == "success" else COLORS["amber"]
-        card._draw()
-        card.after(1100, lambda: self._clear_highlight(card))
+        self._flash(self.cards[kind], COLORS["card_hi"])
+        self.after(900, lambda: self._flash(self.cards[kind], COLORS["card"]))
 
     @staticmethod
-    def _clear_highlight(card: Card) -> None:
-        if card.winfo_exists():
-            card.border_color = COLORS["border"]
-            card._draw()
+    def _flash(row: tk.Frame, color: str) -> None:
+        if not row.winfo_exists():
+            return
+        stack = [row]
+        while stack:
+            widget = stack.pop()
+            stack.extend(widget.winfo_children())
+            if isinstance(widget, (tk.Label, tk.Frame)) and widget.cget("bg") in (COLORS["card"], COLORS["card_hi"]):
+                widget.configure(bg=color)
+            elif isinstance(widget, ModernButton):
+                widget.parent_bg = color
+                widget.configure(bg=color)
+                widget._draw()
 
     def _refresh(self) -> None:
         ui = self.app.ui_state
@@ -138,6 +151,7 @@ class IncidentsPage(BasePage):
         replay = self.app.controller.mode is MissionMode.REPLAY
         for kind, button in self.buttons.items():
             button.set_enabled(live and not (replay and kind in (IncidentType.BATTERY_DRAIN, IncidentType.THERMAL_SPIKE)))
+        self.fault_hint.configure(text="" if live else "Start a mission to inject faults")
         try:
             state = MissionState(str(ui.state or "NOMINAL"))
         except ValueError:

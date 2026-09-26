@@ -6,7 +6,7 @@ import tkinter as tk
 from app import config
 from app.utils.helpers import format_met
 from .base_page import BasePage
-from .components import Card, DataTable, KeyValueList, ScoreBar, StatusBadge
+from .components import Card, DataTable, ScoreBar, StatusBadge
 from .theme import COLORS, FONTS, px
 
 
@@ -20,8 +20,8 @@ class RouterPage(BasePage):
         body = tk.Frame(self, bg=COLORS["bg"])
         body.grid(row=0, column=0, sticky="nsew", padx=px(17), pady=(px(17), px(8)))
         body.grid_rowconfigure(0, weight=1)
-        body.grid_columnconfigure(0, weight=3)
-        body.grid_columnconfigure(1, weight=2)
+        body.grid_columnconfigure(0, weight=3, uniform="router")
+        body.grid_columnconfigure(1, weight=2, uniform="router")
         left = Card(body, title="PACKET QUEUE", padding=px(10))
         left.grid(row=0, column=0, sticky="nsew", padx=(0, px(7)))
         self.hold = tk.Label(left.body, text="Router awaiting telemetry", bg=COLORS["card_hi"], fg=COLORS["amber"], font=FONTS["small"], anchor="w", padx=px(8), pady=px(7))
@@ -29,11 +29,11 @@ class RouterPage(BasePage):
         self.rules = tk.Label(left.body, text="Active safety rules: standard limits", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["small"], anchor="w", wraplength=px(500), justify="left")
         self.rules.pack(fill="x", pady=(0, px(8)))
         self.queue_table = DataTable(left.body, [
-            ("id", "ID", 52, "w"), ("type", "TYPE", 92, "w"),
-            ("priority", "PRIORITY", 78, "w"), ("size", "KB", 56, "e"),
-            ("age", "AGE s", 50, "e"), ("required", "MIN SIG %", 72, "e"),
+            ("id", "ID", 58, "w"), ("type", "TYPE", 112, "w"),
+            ("priority", "PRIORITY", 86, "w"), ("size", "KB", 56, "e"),
+            ("required", "MIN SIG", 78, "e"),
             ("energy", "ENERGY J", 72, "e"), ("score", "SCORE", 56, "e"),
-            ("status", "STATUS", 104, "w"),
+            ("status", "STATUS", 118, "w"),
         ])
         self.queue_table.pack(fill="both", expand=True)
         self.queue_table.on_select(self._select_row)
@@ -43,20 +43,20 @@ class RouterPage(BasePage):
         self.selected_badge.pack(side="right")
         self.selected_title = tk.Label(right.body, text="No packet selected", bg=COLORS["card"], fg=COLORS["text"], font=FONTS["h1"], anchor="w")
         self.selected_title.pack(fill="x")
-        self.selected_facts = KeyValueList(right.body, row_pady=0)
-        self.selected_facts.pack(fill="x", pady=(px(2), px(1)))
-        self.score_title = tk.Label(right.body, text="AUTONOMOUS SCORE  —", bg=COLORS["card"], fg=COLORS["cyan"], font=FONTS["h2"], anchor="w")
+        self.selected_facts = tk.Label(right.body, text="", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["small"], anchor="w")
+        self.selected_facts.pack(fill="x", pady=(px(2), px(8)))
+        self.score_title = tk.Label(right.body, text="Autonomous score  —", bg=COLORS["card"], fg=COLORS["cyan"], font=FONTS["h2"], anchor="w")
         self.score_title.pack(fill="x", pady=(px(2), 0))
         self.score_bars = ScoreBar(right.body, compact=True)
         self.score_bars.pack(fill="x", pady=(0, 0))
-        tk.Label(right.body, text="WHY THIS DECISION?", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["caption"], anchor="w").pack(fill="x")
-        self.reason = tk.Label(right.body, text="The router evaluates safety restrictions before selecting a packet.", bg=COLORS["card"], fg=COLORS["text"], font=FONTS["small"], justify="left", anchor="w", wraplength=px(350))
-        self.reason.pack(fill="x", pady=(px(4), px(8)))
-        tk.Label(right.body, text="LAYER 1 — SAFETY RULES   /   LAYER 2 — WEIGHTED SCORE", bg=COLORS["card"], fg=COLORS["muted"], font=FONTS["caption"], anchor="w").pack(fill="x")
-        formula = "score = " + " + ".join(f"{weight:.2f}·{name}" for name, weight in config.ROUTING_WEIGHTS.items())
-        self.formula = tk.Label(right.body, text=formula, bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["small"], justify="left", wraplength=px(350), anchor="w")
-        self.formula.pack(fill="x", pady=(px(4), 0))
-        right.body.bind("<Configure>", lambda e: self._wrap(e.width), add="+")
+        formula = "score = " +" + ".join(f"{weight:.2f}·{name}" for name, weight in config.ROUTING_WEIGHTS.items())
+        self.formula = tk.Label(right.body, text=formula, bg=COLORS["card"], fg=COLORS["muted"], font=FONTS["small"], justify="left", wraplength=px(350), anchor="w")
+        self.formula.pack(side="bottom", fill="x", pady=(px(8), 0))
+        tk.Label(right.body, text="WHY THIS DECISION?", bg=COLORS["card"], fg=COLORS["text_2"], font=FONTS["caption"], anchor="w").pack(fill="x", pady=(px(8), 0))
+        self.reason = tk.Text(right.body, bg=COLORS["card"], fg=COLORS["text"], font=FONTS["small"], wrap="word", bd=0, highlightthickness=0, height=4, padx=0, pady=px(4), spacing2=px(2), cursor="arrow")
+        self.reason.pack(fill="both", expand=True)
+        self._set_reason("The router evaluates safety restrictions before selecting a packet.")
+        right.body.bind("<Configure>", lambda e: self.formula.configure(wraplength=max(px(150), e.width-px(22))), add="+")
         recent = Card(self, title="RECENT DECISIONS", padding=px(11))
         recent.grid(row=1, column=0, sticky="nsew", padx=px(17), pady=(0, px(17)))
         self.recent_table = DataTable(recent.body, [
@@ -65,15 +65,18 @@ class RouterPage(BasePage):
             ("state", "STATE", 135, "w"), ("battery", "BATTERY %", 90, "e"),
             ("signal", "SIGNAL %", 90, "e"),
         ])
-        # Treeview requests ten rows by default; four keeps the explanation visible.
-        self.recent_table.tree.configure(height=2)
+        self.recent_table.tree.configure(height=3)
         self.recent_table.pack(fill="x")
         self._selected_id: int | None = None
         self._bars_signature: tuple | None = None
 
-    def _wrap(self, width: int) -> None:
-        self.reason.configure(wraplength=max(px(150), width-px(4)))
-        self.formula.configure(wraplength=max(px(150), width-px(4)))
+    def _set_reason(self, text: str) -> None:
+        if self.reason.get("1.0", "end-1c") == text:
+            return
+        self.reason.configure(state="normal")
+        self.reason.delete("1.0", "end")
+        self.reason.insert("1.0", text)
+        self.reason.configure(state="disabled")
 
     def _select_row(self, row: dict) -> None:
         self._selected_id = row.get("packet_id")
@@ -92,8 +95,8 @@ class RouterPage(BasePage):
                       "status": "SENT", "score": decision.get("total_score")}
         if packet is None:
             self.selected_title.configure(text="No packet selected")
-            self.score_title.configure(text="AUTONOMOUS SCORE  —")
-            self.reason.configure(text=state.hold_reason or "Packets appear here as the mission starts.")
+            self.score_title.configure(text="Autonomous score  —")
+            self._set_reason(state.hold_reason or "Packets appear here as the mission starts.")
             self.selected_badge.set("IDLE")
             if self._bars_signature is not None:
                 self.score_bars.set([])
@@ -101,13 +104,11 @@ class RouterPage(BasePage):
             return
         packet_id = packet.get("packet_id")
         matched = decision if decision.get("packet_id") == packet_id else {}
-        self.selected_title.configure(text=f"PACKET #{packet_id}")
+        self.selected_title.configure(text=f"Packet #{packet_id}")
         self.selected_badge.set(str(packet.get("status", "QUEUED")))
-        self.selected_facts.set("Type", packet.get("type_label") or packet.get("packet_type", "—"))
-        self.selected_facts.set("Priority", packet.get("priority", "—"))
-        self.selected_facts.set("Size", f"{float(packet.get('size_kb') or 0):.1f} KB")
+        self.selected_facts.configure(text=f"{packet.get('type_label') or packet.get('packet_type', '—')}, {str(packet.get('priority', '—')).lower()} priority, {float(packet.get('size_kb') or 0):.1f} KB")
         score = float(matched.get("total_score", packet.get("score") or 0))
-        self.score_title.configure(text=f"AUTONOMOUS SCORE  {score:.1f}")
+        self.score_title.configure(text=f"Autonomous score  {score:.1f}")
         names = (("priority", "Priority", COLORS["cyan"]), ("link", "Link suitability", COLORS["blue"]),
                  ("urgency", "Urgency", COLORS["purple"]), ("energy", "Energy suitability", COLORS["green"]),
                  ("waiting", "Waiting time", COLORS["amber"]))
@@ -121,7 +122,7 @@ class RouterPage(BasePage):
         explanation = matched.get("reason") or packet.get("hold_reason") or state.hold_reason
         if not explanation and decision:
             explanation = f"Last selected packet #{decision.get('packet_id')}: {decision.get('reason', '')}"
-        self.reason.configure(text=explanation or "Current score is estimated; packet awaits selection.")
+        self._set_reason(explanation or "Current score is estimated; packet awaits selection.")
 
     def _render(self) -> None:
         state = self.app.ui_state

@@ -5,6 +5,7 @@ import logging
 import os
 from pathlib import Path
 import time
+import warnings
 import tkinter as tk
 from tkinter import filedialog, ttk
 
@@ -41,12 +42,12 @@ class AnalyticsPage(BasePage):
         self._last_refresh = 0.0
         self._csv_ready = False
         tabs = tk.Frame(self, bg=COLORS["bg"])
-        tabs.pack(fill="x", padx=px(24), pady=(0, px(11)))
+        tabs.pack(fill="x", padx=px(17), pady=(0, px(11)))
         self.tabs_row = tabs
         self.sections = SegmentedControl(tabs, ("Replay", "Analytics", "Summary"), command=self._switch)
         self.sections.pack(side="left")
         self.host = tk.Frame(self, bg=COLORS["bg"])
-        self.host.pack(fill="both", expand=True, padx=px(24), pady=(0, px(15)))
+        self.host.pack(fill="both", expand=True, padx=px(17), pady=(0, px(17)))
         self.host.grid_rowconfigure(0, weight=1)
         self.host.grid_columnconfigure(0, weight=1)
         self._build_replay()
@@ -63,7 +64,7 @@ class AnalyticsPage(BasePage):
         picker.pack(fill="x", pady=(0, px(10)))
         row = tk.Frame(picker.body, bg=COLORS["card"])
         row.pack(fill="x")
-        ModernButton(row, "IMPORT MISSION CSV", command=self._choose_csv, kind="primary", bg=COLORS["card"]).pack(side="left", padx=(0, px(8)))
+        ModernButton(row, "Choose CSV file…", command=self._choose_csv, kind="primary", bg=COLORS["card"]).pack(side="left", padx=(0, px(8)))
         ModernButton(row, "sample_mission.csv", command=lambda: self.load_csv(config.SAMPLE_MISSION_CSV), bg=COLORS["card"]).pack(side="left", padx=(0, px(8)))
         ModernButton(row, "stressful_mission.csv", command=lambda: self.load_csv(config.STRESSFUL_MISSION_CSV), bg=COLORS["card"]).pack(side="left")
         self.source = tk.Label(picker.body, text="Select a CSV to validate and preview", bg=COLORS["card"],
@@ -91,11 +92,11 @@ class AnalyticsPage(BasePage):
         controls.pack(fill="x")
         buttons = tk.Frame(controls.body, bg=COLORS["card"])
         buttons.pack(fill="x")
-        self.start_button = ModernButton(buttons, "START REPLAY", command=self._start_replay, kind="primary", bg=COLORS["card"])
+        self.start_button = ModernButton(buttons, "Start replay", command=self._start_replay, kind="primary", bg=COLORS["card"])
         self.start_button.pack(side="left", padx=(0, px(7)))
-        self.pause_button = ModernButton(buttons, "PAUSE", command=self._toggle_pause, bg=COLORS["card"])
+        self.pause_button = ModernButton(buttons, "Pause", command=self._toggle_pause, bg=COLORS["card"])
         self.pause_button.pack(side="left", padx=(0, px(7)))
-        self.reset_button = ModernButton(buttons, "RESET", command=self._reset_replay, bg=COLORS["card"])
+        self.reset_button = ModernButton(buttons, "Reset", command=self._reset_replay, bg=COLORS["card"])
         self.reset_button.pack(side="left", padx=(0, px(12)))
         self.speeds = SegmentedControl(buttons, ("0.5x", "1x", "2x", "5x"), selected="1x", command=self._set_speed)
         self.speeds.pack(side="left")
@@ -124,7 +125,7 @@ class AnalyticsPage(BasePage):
         self.mission_choice = ttk.Combobox(selector, textvariable=self.mission_var, state="readonly", width=35)
         self.mission_choice.pack(side="left", padx=(0, px(9)))
         self.mission_choice.bind("<<ComboboxSelected>>", lambda _: self._choose_mission())
-        ModernButton(selector, "REFRESH", command=self.refresh_analytics, bg=COLORS["bg"]).pack(side="left")
+        ModernButton(selector, "Refresh", command=self.refresh_analytics, bg=COLORS["bg"]).pack(side="left")
         kpi = tk.Frame(frame, bg=COLORS["bg"])
         kpi.grid(row=0, column=0, sticky="ew", pady=(0, px(9)))
         self.metrics: dict[str, MetricCard] = {}
@@ -174,12 +175,12 @@ class AnalyticsPage(BasePage):
                 self.facts[name] = facts
         exports = Card(body, title="Export mission evidence", padding=px(11))
         exports.pack(fill="x", pady=(px(2), px(10)))
-        for title, table in (("EXPORT TELEMETRY CSV", "telemetry"),
-                             ("EXPORT PACKET LOG CSV", "packets"),
-                             ("EXPORT DECISION LOG CSV", "decisions")):
+        for title, table in (("Export telemetry CSV", "telemetry"),
+                             ("Export packet log CSV", "packets"),
+                             ("Export decision log CSV", "decisions")):
             ModernButton(exports.body, title, command=lambda name=table: self._export(name),
                          bg=COLORS["card"]).pack(side="left", padx=(0, px(7)))
-        ModernButton(exports.body, "SAVE SUMMARY", command=self._save_summary,
+        ModernButton(exports.body, "Save summary", command=self._save_summary,
                      kind="primary", bg=COLORS["card"]).pack(side="left", padx=(0, px(7)))
         ModernButton(exports.body, "Open exports folder", command=self._open_exports,
                      kind="ghost", bg=COLORS["card"]).pack(side="left")
@@ -273,7 +274,7 @@ class AnalyticsPage(BasePage):
         playing = ctl.mission_active and ctl.mode is MissionMode.REPLAY
         self.start_button.set_enabled(self._csv_ready and not playing)
         self.pause_button.set_enabled(playing)
-        self.pause_button.set_text("RESUME" if ctl.paused else "PAUSE")
+        self.pause_button.set_text("Resume" if ctl.paused else "Pause")
         self.reset_button.set_enabled(self._csv_ready)
         # Reflect the controller's real replay speed (it may be changed elsewhere).
         speed_label = f"{ctl.replay.speed:g}x"
@@ -332,23 +333,18 @@ class AnalyticsPage(BasePage):
             self.chart.render(lambda fig: builder(fig, self._data))
             fig = self.chart.figure
             name = self.chart_choice.selected
-            if name == "Timeline":
-                fig.subplots_adjust(left=.08, right=.97, bottom=.14, top=.96, hspace=.20)
-            elif name == "Packet outcomes":
+            if name == "Packet outcomes":
                 fig.axes[0].tick_params(axis="x", labelrotation=0)
                 fig.axes[0].set_xlabel("")
-                fig.subplots_adjust(left=.10, right=.97, bottom=.15, top=.96)
             elif name == "Mode performance":
                 fig.axes[0].set_xlabel("")
                 fig.axes[0].set_ylabel("Average score")
-                fig.subplots_adjust(left=.10, right=.97, bottom=.13, top=.96)
             elif name == "Correlation":
                 labels = ("Battery", "Temp", "Signal", "Power", "Loss")
                 if len(self._data.telemetry) >= 2:
                     for axis in ("x", "y"):
                         getattr(fig.axes[0], f"set_{axis}ticks")(
                             [index + .5 for index in range(5)], labels=labels, rotation=0, fontsize=8)
-                fig.subplots_adjust(left=.15, right=.91, bottom=.18, top=.96)
             elif name == "Incidents":
                 ax = fig.axes[0]
                 short = {"COMM_FAILURE": "Comm fail", "CORRUPTED_PACKET": "Corrupted",
@@ -357,7 +353,6 @@ class AnalyticsPage(BasePage):
                 names = [short.get(t.get_text(), t.get_text().replace("_", " ").title())
                          for t in ax.get_xticklabels()]
                 ax.set_xticks(ax.get_xticks(), labels=names, rotation=25, ha="right", fontsize=8)
-                fig.subplots_adjust(left=.10, right=.97, bottom=.29, top=.96)
             for ax in fig.axes:
                 legend = ax.get_legend()
                 if legend:
@@ -369,11 +364,14 @@ class AnalyticsPage(BasePage):
                     for label in legend.get_texts():
                         label.set_fontsize(8)
                         label.set_color(COLORS["text_2"])
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                fig.tight_layout(pad=1.1, h_pad=1.6)
             self.chart.canvas.draw_idle()
 
     def _render_summary(self) -> None:
         data = self._summary
-        self.summary_title.configure(text=f"MISSION SUMMARY  ·  {data.get('mission_code', 'No mission selected')}")
+        self.summary_title.configure(text=f"Mission summary  {data.get('mission_code', '(no mission selected)')}")
         groups = {
             "Mission": (("Code", "mission_code"), ("Mode", "mode"), ("Duration", "duration")),
             "Packets": (("Generated", "packets_generated"), ("Transmitted", "packets_transmitted"),
@@ -399,7 +397,7 @@ class AnalyticsPage(BasePage):
                 self.facts[group].set(label, value)
         generated, sent = data.get("count_by_type", {}), data.get("sent_by_type", {})
         for kind in ("TTC", "HOUSEKEEPING", "SSTV", "M17", "CODEC2"):
-            name = "TT&C" if kind == "TTC" else "Codec2" if kind == "CODEC2" else kind.title()
+            name = {"TTC": "TT&C", "CODEC2": "Codec2", "SSTV": "SSTV", "M17": "M17"}.get(kind, kind.title())
             self.facts["By type"].set(name, f"{sent.get(kind, 0)} sent / {generated.get(kind, 0)} generated")
 
     def _export(self, table: str) -> Path | None:
